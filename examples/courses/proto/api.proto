@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package api;
+
+service Course{
+    rpc Create(CreateCourseRequest) returns (CreateCourseResponse) {}
+    rpc Close(CloseCourseRequest) returns (CloseCourseResponse) {}
+    rpc Rename(RenameCourseRequest) returns (RenameCourseResponse) {}
+    rpc Get(GetCourseRequest) returns (GetCourseResponse) {}
+}
+
+message CreateCourseRequest {
+    string course_id = 1;
+    string name = 2;
+    uint32 seats = 3;
+}
+
+message CloseCourseRequest {
+    string course_id = 1;
+}
+
+message RenameCourseRequest {
+    string course_id = 1;
+    string name = 2;
+}
+
+message GetCourseRequest {
+    string course_id = 1;
+}
+
+message CreateCourseResponse {}
+message CloseCourseResponse {}
+message RenameCourseResponse {}
+message GetCourseResponse {
+    string course_id = 1;
+    string name = 2;
+    int32 available_seats = 3;
+    bool closed = 4;
+}
+
+
+service Student{
+    rpc Register(RegisterStudentRequest) returns (RegisterStudentResponse) {}
+}
+
+message RegisterStudentRequest {
+    string student_id = 1;
+    string name = 2;
+}
+
+message RegisterStudentResponse {}
+
+service Subscription {
+    rpc Subscribe(SubscribeStudentRequest) returns (SubscribeStudentResponse) {}
+    rpc Unsubscribe(UnsubscribeStudentRequest) returns (UnsubscribeStudentResponse) {}
+}
+
+message SubscribeStudentRequest{
+    string course_id = 1;
+    string student_id = 2;
+}
+
+message UnsubscribeStudentRequest{
+    string course_id = 1;
+    string student_id = 2;
+}
+
+message SubscribeStudentResponse{}
+message UnsubscribeStudentResponse{}
+
+
+

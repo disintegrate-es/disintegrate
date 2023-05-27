@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package event;
+
+message Event {
+    message CourseCreated {
+        string course_id = 1;
+        string name = 2;
+        uint32 seats = 3;
+    };
+    message CourseClosed {
+        string course_id = 1;
+    };
+    message CourseRenamed {
+        string course_id = 1;
+        string name = 2;
+    };
+    message StudentRegistered {
+        string student_id = 1;
+        string name = 2;
+    };
+    message StudentSubscribed {
+        string student_id = 1;
+        string course_id =  2;
+    };
+    message StudentUnsubscribed {
+        string student_id = 1;
+        string course_id = 2;
+    };
+    oneof event {
+        CourseCreated course_created = 1;
+        CourseClosed course_closed = 2;
+        CourseRenamed course_renamed = 3;
+        StudentRegistered student_registered = 4;
+        StudentSubscribed student_subscribed = 5;
+        StudentUnsubscribed student_unsubscribed = 6;
+    };
+};

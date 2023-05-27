@@ -1,0 +1,24 @@
+[package]
+name = "disintegrate-macros"
+description = "Disintegrate macros. Not for direct use. Refer to the `disintegrate` crate for details."
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+never = []
+
+[dependencies]
+heck = "0.4.1"
+proc-macro2 = "1.0.47"
+quote = "1.0.21"
+syn = { version = "2.0.15", features = ["full"] }
+
+[dev-dependencies]
+disintegrate = { version = "0.1.0", path = "../disintegrate" }

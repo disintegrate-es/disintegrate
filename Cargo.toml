@@ -1,0 +1,23 @@
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/disintegrate-es/disintegrate"
+keywords = ["event-sourcing", "domain-driven-design", "ddd", "event-driven-architecture", "cqrs", "aggregate", "event-store"]
+categories = ["development-tools", "software-libraries", "event-sourcing", "domain-driven-design"]
+authors = [
+    "Luca Iachini <luca.iachini89@gmail.com>",
+    "Valerio Iachini <valerio.iachini@gmail.com>",
+]
+readme = "README.md"
+
+[workspace]
+members = [
+	".",
+	"disintegrate",
+	"disintegrate-macros",
+	"disintegrate-postgres",
+	"disintegrate-serde",
+	"examples/cart",
+	"examples/courses"
+]
+

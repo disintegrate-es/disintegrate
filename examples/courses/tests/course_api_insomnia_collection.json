@@ -1,0 +1,184 @@
+{
+    "_type": "export",
+    "__export_format": 4,
+    "__export_date": "2023-05-23T13:29:25.474Z",
+    "__export_source": "insomnia.desktop.app:v2022.4.2",
+    "resources": [
+        {
+            "_id": "greq_f9a42b6220e044aebd6d84991519ccd3",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684848427654,
+            "created": 1683906728037,
+            "url": "localhost:10437",
+            "name": "Subscribe Student",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Subscription/Subscribe",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"student_id\": \"STUDENT1\",\n\t\"course_id\": \"gRPC_1\"\n}"
+            },
+            "metaSortKey": -1683906728037,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "parentId": null,
+            "modified": 1683905946347,
+            "created": 1683905946347,
+            "name": "Disintegrate",
+            "description": "",
+            "scope": "collection",
+            "_type": "workspace"
+        },
+        {
+            "_id": "greq_98e8d7cac96b48c7a9d363854cd88f62",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684491521248,
+            "created": 1683906770921,
+            "url": "localhost:10437",
+            "name": "Unsubscribe Student",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Subscription/Unsubscribe",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"student_id\": \"STUDENT1\",\n\t\"course_id\": \"gRPC_1\"\n}"
+            },
+            "metaSortKey": -1683906696216,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "greq_febb28ef8f5444f5b11138647e5bf153",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684489001862,
+            "created": 1683906664395,
+            "url": "localhost:10437",
+            "name": "Register Student",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Student/Register",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"student_id\": \"STUDENT1\",\n\t\"name\": \"Valerio\"\n}"
+            },
+            "metaSortKey": -1683906664395,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "greq_381af7b5fbc348f9b109395f6baa1c42",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684491504595,
+            "created": 1683906038853,
+            "url": "localhost:10437",
+            "name": "Create Course",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Course/Create",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"course_id\": \"gRPC_1\",\n\t\"name\": \"gRPC Pro Course\",\n\t\"seats\": 3\n}"
+            },
+            "metaSortKey": -1683906038853,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "greq_10fe5d133d0f4cac8c1a223b759e9afe",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684489023025,
+            "created": 1683906591800,
+            "url": "localhost:10437",
+            "name": "Rename Course",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Course/Rename",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"course_id\": \"gRPC_1\",\n\t\"name\": \"gRPC Base Course\"\n}"
+            },
+            "metaSortKey": -1683906038803,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "greq_bdec79780e2f46f2ae0e3e46adb3f007",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684489014605,
+            "created": 1683906611825,
+            "url": "localhost:10437",
+            "name": "Close Course",
+            "description": "",
+            "protoFileId": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "protoMethodName": "/api.Course/Close",
+            "metadata": [],
+            "body": {
+                "text": "{\n\t\"course_id\": \"gRPC_1\"\n}"
+            },
+            "metaSortKey": -1683906038753,
+            "isPrivate": false,
+            "_type": "grpc_request"
+        },
+        {
+            "_id": "env_23324a25186438db1b2613e1279ad75715f28040",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1683905946350,
+            "created": 1683905946350,
+            "name": "Base Environment",
+            "data": {},
+            "dataPropertyOrder": null,
+            "color": null,
+            "isPrivate": false,
+            "metaSortKey": 1683905946350,
+            "_type": "environment"
+        },
+        {
+            "_id": "jar_23324a25186438db1b2613e1279ad75715f28040",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1683905946350,
+            "created": 1683905946350,
+            "name": "Default Jar",
+            "cookies": [],
+            "_type": "cookie_jar"
+        },
+        {
+            "_id": "spc_7e114eaaa11a49e682418cff251f1e9c",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1683905946347,
+            "created": 1683905946347,
+            "fileName": "Disintegrate",
+            "contents": "",
+            "contentType": "yaml",
+            "_type": "api_spec"
+        },
+        {
+            "_id": "pd_d98a204b535e4e6db8b8feb567b505c7",
+            "parentId": "wrk_5aeb30f6376b4f7e95d101f3bea8fc91",
+            "modified": 1684317049253,
+            "created": 1684317049253,
+            "name": "proto",
+            "_type": "proto_directory"
+        },
+        {
+            "_id": "pf_affacb0dc2b04bef9486838cbd68b637",
+            "parentId": "pd_d98a204b535e4e6db8b8feb567b505c7",
+            "modified": 1684317049251,
+            "created": 1684317049251,
+            "name": "api.proto",
+            "protoText": "syntax = \"proto3\";\n\npackage api;\n\nservice Course{\n    rpc Create(CreateCourseRequest) returns (CreateCourseResponse) {}\n    rpc Close(CloseCourseRequest) returns (CloseCourseResponse) {}\n    rpc Rename(RenameCourseRequest) returns (RenameCourseResponse) {}\n}\n\nmessage CreateCourseRequest {\n    string course_id = 1;\n    string name = 2;\n    uint32 seats = 3;\n}\n\nmessage CloseCourseRequest {\n    string course_id = 1;\n}\n\nmessage RenameCourseRequest {\n    string course_id = 1;\n    string name = 2;\n}\n\nmessage CreateCourseResponse {}\nmessage CloseCourseResponse {}\nmessage RenameCourseResponse {}\n\n\nservice Student{\n    rpc Register(RegisterStudentRequest) returns (RegisterStudentResponse) {}\n}\n\nmessage RegisterStudentRequest {\n    string student_id = 1;\n    string name = 2;\n}\n\nmessage RegisterStudentResponse {}\n\nservice Subscription {\n    rpc Subscribe(SubscribeStudentRequest) returns (SubscribeStudentResponse) {}\n    rpc Unsubscribe(UnsubscribeStudentRequest) returns (UnsubscribeStudentResponse) {}\n}\n\nmessage SubscribeStudentRequest{\n    string course_id = 1;\n    string student_id = 2;\n}\n\nmessage UnsubscribeStudentRequest{\n    string course_id = 1;\n    string student_id = 2;\n}\n\nmessage SubscribeStudentResponse{}\nmessage UnsubscribeStudentResponse{}\n\n\n\n",
+            "_type": "proto_file"
+        },
+        {
+            "_id": "pf_9de226f8cc5b417c952d0297eeec4749",
+            "parentId": "pd_d98a204b535e4e6db8b8feb567b505c7",
+            "modified": 1684317049252,
+            "created": 1684317049252,
+            "name": "event.proto",
+            "protoText": "syntax = \"proto3\";\n\npackage event;\n\nmessage Event {\n    message CourseCreated {\n        string course_id = 1;\n        string name = 2;\n        uint32 seats = 3;\n    };\n    message CourseClosed {\n        string course_id = 1;\n    };\n    message CourseRenamed {\n        string course_id = 1;\n        string name = 2;\n    };\n    message StudentRegistered {\n        string student_id = 1;\n        string name = 2;\n    };\n    message StudentSubscribed {\n        string student_id = 1;\n        string course_id =  2;\n    };\n    message StudentUnsubscribed {\n        string student_id = 1;\n        string course_id = 2;\n    };\n    oneof event {\n        CourseCreated course_created = 1;\n        CourseClosed course_closed = 2;\n        CourseRenamed course_renamed = 3;\n        StudentRegistered student_registered = 4;\n        StudentSubscribed student_subscribed = 5;\n        StudentUnsubscribed student_unsubscribed = 6;\n    };\n};\n",
+            "_type": "proto_file"
+        }
+    ]
+}
