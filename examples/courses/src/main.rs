@@ -14,10 +14,9 @@ type Application = courses::application::Application<EventStore>;
 #[tokio::main]
 async fn main() -> Result<()> {
     let pool = courses::postgres::connect().await?;
-    disintegrate_postgres::setup(&pool).await?;
-
     let serde = Prost::<DomainEvent, proto::Event>::default();
-    let event_store = PgEventStore::new(pool.clone(), serde);
+
+    let event_store = PgEventStore::new(pool.clone(), serde).await?;
     let read_model = read_model::Repository::new(pool.clone());
     let app = application::Application::new(event_store.clone(), read_model);
 
@@ -67,7 +66,7 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
     PgEventListener::builder(event_store)
         .register_listener(
             read_model::ReadModelProjection::new(pool.clone()).await?,
-            PgEventListenerConfig::poller_with_listener(Duration::from_secs(5)),
+            PgEventListenerConfig::poller(Duration::from_millis(50)),
         )
         .start_with_shutdown(shutdown())
         .await

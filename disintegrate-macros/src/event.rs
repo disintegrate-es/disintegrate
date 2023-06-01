@@ -1,22 +1,23 @@
 mod group;
+mod utils;
 
 use group::{groups, impl_group};
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
-use syn::{Data, DeriveInput, Variant};
+use proc_macro2::{Ident, TokenStream as TokenStream2};
+use quote::{format_ident, quote};
+use syn::{Data, DeriveInput};
 use syn::{DataEnum, DataStruct, Fields};
+use utils::{const_slice_unique, const_slices_concat, utils_mod};
 
 pub fn event_inner(ast: &DeriveInput) -> TokenStream {
     match ast.data {
         Data::Enum(ref data) => {
-            let variant_prefix = event_name(ast);
-            let derive_event = impl_enum(ast, data, &variant_prefix);
+            let derive_event = impl_enum(ast, data);
             let groups = groups(ast);
             let impl_groups = groups.iter().map(|g| impl_group(ast, g));
             let derive_event_groups = groups.iter().map(|g| {
                 if let Data::Enum(ref enum_data) = g.data {
-                    impl_enum(g, enum_data, &variant_prefix)
+                    impl_enum(g, enum_data)
                 } else {
                     panic!("Expect to be an enum data");
                 }
@@ -35,15 +36,11 @@ pub fn event_inner(ast: &DeriveInput) -> TokenStream {
     }
 }
 
-fn impl_enum(ast: &DeriveInput, data: &DataEnum, name_prefix: &str) -> TokenStream2 {
+fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
     let name = ast.ident.clone();
-    let names = data
-        .variants
-        .iter()
-        .map(|variant| variant_name(name_prefix, variant));
     let impl_name = data.variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
-        let event_name = variant_name(name_prefix, variant);
+        let event_name = variant_ident.to_string();
 
         quote! {
             #name::#variant_ident{ .. } => #event_name,
@@ -64,8 +61,12 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum, name_prefix: &str) -> TokenStre
                     .map(|f| f.ident.as_ref())
                     .collect();
 
+                let reserved_identifiers = reserved_identifier_names(&identifiers_fields);
                 quote! {
-                    #name::#event_type{#(#identifiers_fields,)*..} => disintegrate::domain_identifiers!{#(#identifiers_fields: #identifiers_fields),*},
+                    #name::#event_type{#(#identifiers_fields,)*..} => {
+                        #reserved_identifiers
+                        disintegrate::domain_identifiers!{#(#identifiers_fields: #identifiers_fields),*}
+                    },
                 }
             },
             Fields::Unit => quote! {
@@ -75,9 +76,47 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum, name_prefix: &str) -> TokenStre
 
     });
 
+    let domain_identifiers_slice =
+        data.variants
+            .iter()
+            .fold(quote!(&[]), |acc, variant| match &variant.fields {
+                Fields::Unnamed(fields) => {
+                    let payload_type = &fields.unnamed.first().unwrap().ty;
+                    const_slices_concat(
+                        quote!(#acc),
+                        quote!(#payload_type::SCHEMA.domain_identifiers),
+                    )
+                }
+                Fields::Named(fields) => {
+                    let identifiers_fields: Vec<_> = fields
+                        .named
+                        .iter()
+                        .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("id")))
+                        .map(|f| f.ident.as_ref().map(ToString::to_string))
+                        .collect();
+
+                    const_slices_concat(quote!(#acc), quote!(&[#(#identifiers_fields,)*]))
+                }
+                Fields::Unit => const_slices_concat(quote!(#acc), quote!(&[])),
+            });
+
+    let types = data
+        .variants
+        .iter()
+        .map(|variant| variant.ident.to_string());
+
+    let event_util_mod_name = format_ident!("disintegrate_{name}_utils");
+    let event_util_mod = utils_mod(&event_util_mod_name);
+
+    let impl_domain_identifiers_schema =
+        const_slice_unique(&event_util_mod_name, domain_identifiers_slice);
     quote! {
         impl disintegrate::Event for #name {
-            const NAMES: &'static [&'static str] = &[#(#names,)*];
+            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema {
+                types: &[#(#types,)*],
+                domain_identifiers: #impl_domain_identifiers_schema,
+            };
+
             fn name(&self) -> &'static str {
                 match self {
                    #(#impl_name)*
@@ -90,12 +129,15 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum, name_prefix: &str) -> TokenStre
                  }
             }
         }
+
+        #event_util_mod
+
     }
 }
 
 fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> TokenStream2 {
     let name = ast.ident.clone();
-    let impl_name = event_name(ast);
+    let impl_type = name.to_string();
 
     let identifiers_fields: Vec<_> = data
         .fields
@@ -104,28 +146,45 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> TokenStream2 {
         .map(|f| f.ident.as_ref())
         .collect();
 
+    let identifiers_names: Vec<_> = identifiers_fields
+        .iter()
+        .map(|f| f.map(ToString::to_string))
+        .collect();
+
+    let reserved_identifiers = reserved_identifier_names(&identifiers_fields);
+
     quote! {
         impl disintegrate::Event for #name {
-            const NAMES: &'static [&'static str] = &[#impl_name];
+
+            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers: &[#(#identifiers_names,)*]};
+
             fn name(&self) -> &'static str {
-                #impl_name
+                #impl_type
             }
 
             fn domain_identifiers(&self) -> disintegrate::DomainIdentifierSet {
+                #reserved_identifiers
                 disintegrate::domain_identifiers!{#(#identifiers_fields: self.#identifiers_fields),*}
             }
         }
     }
 }
 
-fn event_name(ast: &DeriveInput) -> String {
-    let event_name = ast.ident.to_string();
-    event_name
-        .strip_suffix("Event")
-        .unwrap_or(&event_name)
-        .to_owned()
-}
+fn reserved_identifier_names(identifiers_fields: &[Option<&Ident>]) -> Option<TokenStream2> {
+    const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
 
-fn variant_name(prefix: &str, variant: &Variant) -> String {
-    format!("{}{}", prefix, variant.ident)
+    if let Some(Some(identifier)) = identifiers_fields.iter().find(|id| {
+        id.map_or(false, |id| {
+            RESERVED_NAMES.contains(&id.to_string().as_str())
+        })
+    }) {
+        return Some(
+            syn::Error::new(
+                identifier.span(),
+                "Reserved domain identifier name. Please use a different name",
+            )
+            .to_compile_error(),
+        );
+    }
+    None
 }

@@ -8,7 +8,7 @@ pub mod stream_query;
 mod testing;
 
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
-pub use crate::event::{Event, PersistedEvent};
+pub use crate::event::{Event, EventSchema, PersistedEvent};
 pub use crate::event_store::EventStore;
 pub use crate::identifier::Identifier;
 pub use crate::listener::EventListener;

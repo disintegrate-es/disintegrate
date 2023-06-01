@@ -1,5 +1,0 @@
-CREATE TABLE IF NOT EXISTS event_listener_status (
-    id TEXT PRIMARY KEY,
-    last_processed_event_id BIGINT,
-    updated_at TIMESTAMP DEFAULT now()
-);

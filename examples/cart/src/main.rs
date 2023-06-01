@@ -17,14 +17,11 @@ async fn main() -> Result<()> {
     let connect_options = PgConnectOptions::new();
     let pool = PgPool::connect_with(connect_options).await?;
 
-    // Initialize DB
-    disintegrate_postgres::setup(&pool).await?;
-
     // Create a serde for serialize and deserialize events
     let serde = Json::<DomainEvent>::default();
 
     // Create a PostgreSQL event store
-    let event_store = PgEventStore::new(pool, serde);
+    let event_store = PgEventStore::new(pool, serde).await?;
 
     // Hydrate the `Cart` from the event store
     let user_id = "user-1";
