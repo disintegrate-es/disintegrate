@@ -32,12 +32,15 @@ enum DomainEvent {
 
 #[test]
 fn it_correctly_sets_event_names() {
-    let names = DomainEvent::NAMES;
-    assert_eq!(names.len(), 4);
-    assert!(names.contains(&"DomainUserCreated"));
-    assert!(names.contains(&"DomainUserUpdated"));
-    assert!(names.contains(&"DomainOrderCreated"));
-    assert!(names.contains(&"DomainOrderCancelled"));
+    assert_eq!(
+        DomainEvent::SCHEMA.types,
+        &[
+            "UserCreated",
+            "UserUpdated",
+            "OrderCreated",
+            "OrderCancelled"
+        ]
+    );
 }
 
 #[test]
@@ -93,13 +96,22 @@ fn it_generates_event_groups() {
         }
     );
 
-    let names = UserEvent::NAMES;
-    assert_eq!(names.len(), 2);
-    assert!(names.contains(&"DomainUserCreated"));
-    assert!(names.contains(&"DomainUserUpdated"));
+    assert_eq!(UserEvent::SCHEMA.types, &["UserCreated", "UserUpdated"]);
 
-    let names = OrderEvent::NAMES;
-    assert_eq!(names.len(), 2);
-    assert!(names.contains(&"DomainOrderCreated"));
-    assert!(names.contains(&"DomainOrderCancelled"));
+    assert_eq!(
+        OrderEvent::SCHEMA.types,
+        &["OrderCreated", "OrderCancelled"]
+    );
+}
+
+#[test]
+fn it_generates_domain_identifiers_schema_set() {
+    assert_eq!(OrderEvent::SCHEMA.domain_identifiers, &["order_id"]);
+
+    assert_eq!(UserEvent::SCHEMA.domain_identifiers, &["user_id"]);
+
+    assert_eq!(
+        DomainEvent::SCHEMA.domain_identifiers,
+        &["order_id", "user_id"]
+    );
 }

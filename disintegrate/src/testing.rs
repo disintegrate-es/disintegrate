@@ -109,7 +109,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::Event;
+    use crate::event::{Event, EventSchema};
     use crate::state::State;
     use crate::stream_query::StreamQuery;
 
@@ -120,7 +120,10 @@ mod tests {
     }
 
     impl Event for SampleEvent {
-        const NAMES: &'static [&'static str] = &["Created", "Deleted"];
+        const SCHEMA: EventSchema = EventSchema {
+            types: &["Created", "Deleted"],
+            domain_identifiers: &[],
+        };
 
         fn domain_identifiers(&self) -> crate::domain_identifier::DomainIdentifierSet {
             todo!()

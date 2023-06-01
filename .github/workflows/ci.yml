@@ -1,13 +1,6 @@
 name: CI 
 
-on:
-  push:
-    branches:
-      - master 
-  pull_request:
-    types: [ opened, synchronize, reopened ]
-    branches:
-      - master
+on: push
 
 env:
   CARGO_TERM_COLOR: always

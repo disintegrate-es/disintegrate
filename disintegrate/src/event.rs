@@ -8,14 +8,20 @@
 use crate::domain_identifier::DomainIdentifierSet;
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
+pub struct EventSchema {
+    pub types: &'static [&'static str],
+    pub domain_identifiers: &'static [&'static str],
+}
+
 /// Represents an event in the event store.
 ///
 /// An event is an occurrence or action of interest within the system. It can be persisted and retrieved from
 /// the event store. The `Event` trait provides methods for retrieving domain identifiers associated with the event
-/// and getting the event's name. The constant `NAMES` holds the names of all supported events.
+/// and getting the event's name. The constant `SCHEMA` holds the name and the domain identifiers of all supported events.
 pub trait Event {
-    /// Constant holding the names of all supported events.
-    const NAMES: &'static [&'static str];
+    /// Returns the schema of all supported events.
+    const SCHEMA: EventSchema;
     /// Retrieves the domain identifiers associated with the event.
     fn domain_identifiers(&self) -> DomainIdentifierSet;
     /// Retrieves the name of the event.

@@ -144,7 +144,7 @@ pub trait FilterEvaluator {
     /// The result type produced by evaluating a filter.
     type Result;
     /// Evaluates the given filter and returns the result.
-    fn eval(&self, filter: &StreamFilter) -> Self::Result;
+    fn eval(&mut self, filter: &StreamFilter) -> Self::Result;
 }
 
 #[cfg(test)]

@@ -87,37 +87,20 @@ where
     ///
     /// A `Result` indicating the success or failure of the listener process.
     pub async fn start(self) -> Result<(), Error> {
+        setup(&self.event_store.pool).await?;
         let mut handles = vec![];
         for executor in self.executors {
             executor.init().await?;
             let executor = executor.clone();
-            let pool = self.event_store.pool.clone();
             let shutdown = self.shutdown_token.clone();
             let handle = tokio::spawn(async move {
                 let mut poll = tokio::time::interval(executor.config().poll());
-                if executor.config().listener_enabled() {
-                    let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
-                    listener.listen(executor.event_listener_id()).await?;
-                    loop {
-                        tokio::select! {
-                            _ = poll.tick() => executor.execute().await?,
-                            msg = listener.try_recv() => {
-                                match msg {
-                                    Ok(_) => executor.execute().await?,
-                                    Err(err @ sqlx::Error::PoolClosed) => return Err(Error::Database(err)),
-                                    _ => (),
-                                }
-                            },
-                            _ = shutdown.cancelled() => return Ok(()),
-                        };
-                    }
-                } else {
-                    loop {
-                        tokio::select! {
-                            _ = poll.tick() => executor.execute().await?,
-                            _ = shutdown.cancelled() => return Ok(()),
-                        };
-                    }
+                poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {
+                        _ = poll.tick() => executor.execute().await?,
+                        _ = shutdown.cancelled() => return Ok::<(), Error>(()),
+                    };
                 }
             });
             handles.push(handle);
@@ -162,14 +145,10 @@ pub enum PgEventListenerError {
 /// * `poll`: The `poll` property represents the interval at which the
 /// listener should poll for new events from the event store. This determines how frequently the
 /// event handler will handles new events.
-/// * `listener_enabled`: The `listener_enabled` property determines whether or not the PostgreSQL database listener
-/// is enabled. If it is enabled, the listener will receive notifications from the database
-/// when an event has been stored
 /// * `batch_size`: The `batch_size` property determines the number of events to be processed in a single batch.
 #[derive(Clone)]
 pub struct PgEventListenerConfig {
     poll: Duration,
-    listener_enabled: bool,
     batch_size: usize,
 }
 
@@ -186,24 +165,7 @@ impl PgEventListenerConfig {
     pub fn poller(poll: Duration) -> Self {
         Self {
             poll,
-            listener_enabled: false,
             batch_size: 100,
-        }
-    }
-
-    /// Creates a new `PgEventListenerConfig` with the specified poll interval and enables the PostgreSQL notification listener.
-    ///
-    /// # Parameters
-    ///
-    /// * `poll`: The poll interval.
-    ///
-    /// # Returns
-    ///
-    /// A new `PgEventListenerConfig` instance with the listener enabled.
-    pub fn poller_with_listener(poll: Duration) -> Self {
-        Self {
-            listener_enabled: true,
-            ..Self::poller(poll)
         }
     }
 
@@ -228,15 +190,6 @@ impl PgEventListenerConfig {
     /// The poll interval.
     pub fn poll(&self) -> Duration {
         self.poll
-    }
-
-    /// Returns whether the Postgres notification is enabled for the event listener.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the listener is enabled, `false` otherwise.
-    pub fn listener_enabled(&self) -> bool {
-        self.listener_enabled
     }
 
     /// Returns the batch size for processing events.
@@ -272,17 +225,17 @@ where
     _event_listener_events: PhantomData<QE>,
 }
 
-impl<P, QE, E, S> PgEventListerExecutor<P, QE, E, S>
+impl<L, QE, E, S> PgEventListerExecutor<L, QE, E, S>
 where
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
     QE: TryFrom<E> + Event + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
-    P: EventListener<QE>,
+    L: EventListener<QE>,
 {
     pub fn new(
         event_store: PgEventStore<E, S>,
-        event_handler: P,
+        event_handler: L,
         config: PgEventListenerConfig,
     ) -> Self {
         Self {
@@ -294,21 +247,6 @@ where
         }
     }
 
-    async fn is_out_of_sync(&self, pool: &PgPool) -> Result<bool, sqlx::Error> {
-        let (is_out_of_sync,) = sqlx::query_as::<_, (bool,)>(
-            r#"
-                SELECT (s.last_processed_event_id <> p.last_event_id) 
-                FROM event_listener_status s
-                JOIN event_listener p on (s.id = p.id) 
-                WHERE s.id = $1
-                "#,
-        )
-        .bind(self.event_handler.id())
-        .fetch_one(pool)
-        .await?;
-        Ok(is_out_of_sync)
-    }
-
     async fn lock_event_listener(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -316,7 +254,7 @@ where
         Ok(sqlx::query(
             r#"
                 SELECT last_processed_event_id 
-                FROM event_listener_status 
+                FROM event_listener
                 WHERE id = $1  
                 FOR UPDATE SKIP LOCKED 
                 "#,
@@ -340,7 +278,7 @@ where
             Err(PgEventListenerError::Query) => return Ok(()),
         };
         sqlx::query(
-            "UPDATE event_listener_status SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
+            "UPDATE event_listener SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
         )
         .bind(last_processed_event_id)
         .bind(self.event_handler.id())
@@ -381,9 +319,6 @@ where
     }
 
     pub async fn try_execute(&self) -> Result<(), sqlx::Error> {
-        if !self.is_out_of_sync(&self.event_store.pool).await? {
-            return Ok(());
-        }
         let mut tx = self.event_store.pool.begin().await?;
         let Some(last_processed_id) = self.lock_event_listener(&mut tx).await? else {
             return Ok(());
@@ -413,14 +348,8 @@ where
 
     async fn init(&self) -> Result<(), Error> {
         let mut tx = self.event_store.pool.begin().await?;
-        let event_names = E::NAMES;
-        sqlx::query("insert into event_listener_status (id, last_processed_event_id) values ($1, -1) on conflict (id) do nothing")
+        sqlx::query("INSERT INTO event_listener (id, last_processed_event_id) VALUES ($1, -1) ON CONFLICT (id) DO NOTHING")
                 .bind(self.event_handler.id())
-                .execute(&mut tx)
-                .await?;
-        sqlx::query("insert into event_listener (id, event_types, last_event_id) values ($1, $2,  0) on conflict (id) do update set event_types = $2")
-                .bind(self.event_handler.id())
-                .bind(event_names)
                 .execute(&mut tx)
                 .await?;
         tx.commit().await?;
@@ -440,31 +369,9 @@ where
     }
 }
 
-pub async fn setup(pool: &PgPool) -> Result<(), Error> {
+async fn setup(pool: &PgPool) -> Result<(), Error> {
     sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
         .execute(pool)
         .await?;
-    sqlx::query(include_str!(
-        "listener/sql/idx_event_listener_event_types.sql"
-    ))
-    .execute(pool)
-    .await?;
-    sqlx::query(include_str!("listener/sql/table_event_listener_status.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/fn_update_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/trigger_event_insert.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/fn_notify_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!(
-        "listener/sql/trigger_notify_event_listener.sql"
-    ))
-    .execute(pool)
-    .await?;
     Ok(())
 }

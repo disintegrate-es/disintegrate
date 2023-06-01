@@ -1,10 +1,9 @@
-use crate::event_store;
-
 use super::*;
 
 use async_trait::async_trait;
 use disintegrate::{
-    domain_identifiers, query, DomainIdentifierSet, EventStore, PersistedEvent, StreamQuery,
+    domain_identifiers, query, DomainIdentifierSet, EventSchema, EventStore, PersistedEvent,
+    StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 
@@ -19,7 +18,11 @@ enum ShoppingCartEvent {
 }
 
 impl Event for ShoppingCartEvent {
-    const NAMES: &'static [&'static str] = &["ShoppingCartAdded", "ShoppingCartRemoved"];
+    const SCHEMA: EventSchema = EventSchema {
+        types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        domain_identifiers: &["cart_id", "product_id"],
+    };
+
     fn name(&self) -> &'static str {
         match self {
             ShoppingCartEvent::Added { .. } => "ShoppingCartAdded",
@@ -114,13 +117,12 @@ impl EventListener<ShoppingCartEvent> for CartEventHandler {
 
 #[sqlx::test]
 async fn it_handles_events(pool: PgPool) {
-    event_store::setup(&pool).await.unwrap();
-    setup(&pool).await.unwrap();
-
     let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
         pool.clone(),
         Json::default(),
-    );
+    )
+    .await
+    .unwrap();
 
     let event_handler_executor = PgEventListerExecutor::new(
         event_store.clone(),
@@ -158,18 +160,17 @@ async fn it_handles_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_runs_event_listeners(pool: PgPool) {
-    event_store::setup(&pool).await.unwrap();
-    setup(&pool).await.unwrap();
-
     let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
         pool.clone(),
         Json::default(),
-    );
+    )
+    .await
+    .unwrap();
 
     let event_listener = PgEventListener::builder(event_store.clone())
         .register_listener(
             CartEventHandler::new(pool.clone()).await.unwrap(),
-            PgEventListenerConfig::poller_with_listener(Duration::from_millis(50)),
+            PgEventListenerConfig::poller(Duration::from_millis(50)),
         )
         .start_with_shutdown(async {
             tokio::time::sleep(Duration::from_millis(400)).await;

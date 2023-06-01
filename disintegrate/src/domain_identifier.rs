@@ -35,7 +35,7 @@
 //!     println!("Identifier: {}, Value: {}", key, value);
 //! }
 //! ```
-use std::{collections::HashMap, ops::Deref};
+use std::{collections::BTreeMap, ops::Deref};
 
 use crate::identifier::Identifier;
 use serde::{Deserialize, Serialize};
@@ -49,15 +49,15 @@ pub struct DomainIdentifier {
     pub value: String,
 }
 
-/// A set of domain identifiers, represented as a hashmap of `Identifier` keys and `String` values.
+/// A set of domain identifiers, represented as a map of `Identifier` keys and `String` values.
 ///
 /// The `DomainIdentifierSet` struct is used to store a collection of domain identifiers.
 #[derive(Debug, Default, PartialEq, Clone, Deserialize, Serialize)]
-pub struct DomainIdentifierSet(HashMap<Identifier, String>);
+pub struct DomainIdentifierSet(BTreeMap<Identifier, String>);
 
 impl DomainIdentifierSet {
-    /// Creates a new `DomainIdentifierSet` with the given `HashMap` of domain identifiers.
-    pub fn new(domain_identifiers: HashMap<Identifier, String>) -> Self {
+    /// Creates a new `DomainIdentifierSet` with the given `BTreeMap` of domain identifiers.
+    pub fn new(domain_identifiers: BTreeMap<Identifier, String>) -> Self {
         Self(domain_identifiers)
     }
 
@@ -68,9 +68,9 @@ impl DomainIdentifierSet {
 }
 
 /// Implements the `Deref` trait for `DomainIdentifierSet`, allowing it to be dereferenced to a `HashMap<Identifier, String>`.
-/// This enables transparent access to the underlying `HashMap` of domain identifiers.
+/// This enables transparent access to the underlying `BTreeMap` of domain identifiers.
 impl Deref for DomainIdentifierSet {
-    type Target = HashMap<Identifier, String>;
+    type Target = BTreeMap<Identifier, String>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -84,21 +84,9 @@ macro_rules! domain_identifiers{
         $crate::domain_identifier::DomainIdentifierSet::default()
     };
     {$($key:ident: $value:expr),*} => {{
-
-        const DOMAIN_IDENTIFIERS_COUNT: usize = $crate::count![@COUNT; $($key),*];
-
         #[allow(unused_mut)]
-        let mut domain_identifiers = std::collections::HashMap::<$crate::identifier::Identifier, String>::with_capacity(DOMAIN_IDENTIFIERS_COUNT);
+        let mut domain_identifiers = std::collections::BTreeMap::<$crate::identifier::Identifier, String>::new();
         $(domain_identifiers.insert($crate::ident!(#$key), $value.to_string());)*
         $crate::domain_identifier::DomainIdentifierSet::new(domain_identifiers)
     }};
-}
-
-#[macro_export]
-#[doc(hidden)]
-macro_rules! count {
-    (@COUNT; $($element:expr),*) => {
-        <[()]>::len(&[$($crate::count![@SUBST; $element]),*])
-    };
-    (@SUBST; $_element:expr) => { () };
 }

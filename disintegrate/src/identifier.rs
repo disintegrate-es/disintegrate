@@ -55,7 +55,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 /// Represents a valid identifier.
-#[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Identifier(String);
 
 impl Identifier {

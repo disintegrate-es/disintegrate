@@ -67,5 +67,5 @@ where
     ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
     where
         E: Clone + 'async_trait,
-        QE: Event + Clone + Send;
+        QE: Event + Clone + Send + Sync;
 }

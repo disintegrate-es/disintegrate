@@ -1,11 +1,10 @@
-use crate::event_store::setup;
 use crate::PgEventStore;
 
 use super::*;
 use disintegrate::{
     domain_identifiers, query,
     state::{Hydrated, State, StateStore},
-    DomainIdentifierSet, Event, StreamQuery,
+    DomainIdentifierSet, Event, EventSchema, StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -18,7 +17,11 @@ struct SampleEvent {
 }
 
 impl Event for SampleEvent {
-    const NAMES: &'static [&'static str] = &["SampleEvent"];
+    const SCHEMA: EventSchema = EventSchema {
+        types: &["SampleEvent"],
+        domain_identifiers: &["id"],
+    };
+
     fn name(&self) -> &'static str {
         "SampleEvent"
     }
@@ -51,9 +54,9 @@ impl State for SampleState {
 
 #[sqlx::test]
 async fn it_hydrates_state_from_empty_event_store(pool: sqlx::PgPool) {
-    setup(&pool).await.unwrap();
-
-    let event_store = PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool, Json::default());
+    let event_store = PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool, Json::default())
+        .await
+        .unwrap();
 
     let default_state = SampleState {
         id: "some id".into(),
@@ -73,7 +76,10 @@ async fn it_hydrates_state_from_empty_event_store(pool: sqlx::PgPool) {
 
 #[sqlx::test]
 async fn it_hydrates_state(pool: sqlx::PgPool) {
-    setup(&pool).await.unwrap();
+    let event_store =
+        PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool.clone(), Json::default())
+            .await
+            .unwrap();
 
     insert_events(
         &pool,
@@ -83,8 +89,6 @@ async fn it_hydrates_state(pool: sqlx::PgPool) {
         }],
     )
     .await;
-
-    let event_store = PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool, Json::default());
 
     let default_state = SampleState {
         id: "some id".into(),
@@ -105,8 +109,9 @@ async fn it_hydrates_state(pool: sqlx::PgPool) {
 
 #[sqlx::test]
 async fn it_saves_state(pool: sqlx::PgPool) {
-    setup(&pool).await.unwrap();
-    let event_store = PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool, Json::default());
+    let event_store = PgEventStore::<SampleEvent, Json<SampleEvent>>::new(pool, Json::default())
+        .await
+        .unwrap();
 
     let default_state = SampleState {
         id: "some id".into(),

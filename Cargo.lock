@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert2",
  "async-trait",
@@ -491,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "disintegrate",
  "heck",
@@ -502,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate-postgres"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-stream",
  "async-trait",

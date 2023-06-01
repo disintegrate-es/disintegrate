@@ -1,8 +1,7 @@
 use super::*;
-use crate::event_store::setup;
 use crate::{Error, PgEventStore};
-use disintegrate::EventStore;
 use disintegrate::{domain_identifiers, query, DomainIdentifierSet, Event};
+use disintegrate::{EventSchema, EventStore};
 use disintegrate_serde::serde::json::Json;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -24,7 +23,10 @@ enum ShoppingCartEvent {
 }
 
 impl Event for ShoppingCartEvent {
-    const NAMES: &'static [&'static str] = &["ShoppingCartAdded", "ShoppingCartRemoved"];
+    const SCHEMA: EventSchema = EventSchema {
+        types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        domain_identifiers: &["cart_id", "product_id"],
+    };
     fn name(&self) -> &'static str {
         match self {
             ShoppingCartEvent::Added { .. } => "ShoppingCartAdded",
@@ -49,7 +51,13 @@ impl Event for ShoppingCartEvent {
 
 #[sqlx::test]
 async fn it_queries_events(pool: PgPool) {
-    setup(&pool).await.unwrap();
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+
     let events = vec![
         ShoppingCartEvent::Added {
             product_id: "product_1".to_string(),
@@ -74,9 +82,6 @@ async fn it_queries_events(pool: PgPool) {
     ];
     insert_events(&pool, &events).await;
 
-    let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default());
-
     // Test the stream function
     let query = query!(ShoppingCartEvent, product_id == "product_1");
     let result = event_store
@@ -90,7 +95,10 @@ async fn it_queries_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_appends_events(pool: PgPool) {
-    setup(&pool).await.unwrap();
+    let event_store =
+        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default())
+            .await
+            .unwrap();
     let events: Vec<ShoppingCartEvent> = vec![ShoppingCartEvent::Added {
         product_id: "product_1".to_string(),
         cart_id: "cart_1".to_string(),
@@ -102,8 +110,6 @@ async fn it_appends_events(pool: PgPool) {
             (product_id == "product_1") or
             (cart_id == "cart_1")
     );
-    let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default());
 
     let result = event_store.append(events, query, 0).await.unwrap();
 
@@ -121,16 +127,17 @@ async fn it_appends_events(pool: PgPool) {
 async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_its_events_have_been_changed_and_event_store_is_empty(
     pool: PgPool,
 ) {
-    setup(&pool).await.unwrap();
     let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default());
+        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default())
+            .await
+            .unwrap();
 
     let query = query!(
         ShoppingCartEvent,
             (product_id == "product_1") or
             (cart_id == "cart_1")
     );
-    let _result = event_store
+    event_store
         .append(
             vec![ShoppingCartEvent::Added {
                 product_id: "product_1".to_string(),
@@ -165,7 +172,12 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
 async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_its_events_have_been_changed(
     pool: PgPool,
 ) {
-    setup(&pool).await.unwrap();
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
     let events = vec![
         ShoppingCartEvent::Added {
             product_id: "product_1".to_string(),
@@ -179,9 +191,6 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
         },
     ];
     insert_events(&pool, &events).await;
-
-    let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default());
 
     let query_1 = query!(ShoppingCartEvent, cart_id == "cart_1");
     let query_1_result = event_store
