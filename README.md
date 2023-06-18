@@ -111,14 +111,13 @@ To add Disintegrate to your project, follow these steps:
     pub struct Cart {
         user_id: String,
         items: HashSet<Item>,
-        changes: Vec<CartEvent>,
     }
 
     impl State for Cart {
         type Event = CartEvent;
 
         fn query(&self) -> StreamQuery<Self::Event> {
-            query!(Self::Event, user_id == self.user_id.clone())
+            query!(CartEvent, user_id == self.user_id.clone())
         }
 
         fn mutate(&mut self, event: Self::Event) {
@@ -140,10 +139,6 @@ To add Disintegrate to your project, follow these steps:
                 }
             }
         }
-
-        fn changes(&mut self) -> Vec<Self::Event> {
-            std::mem::take(&mut self.changes)
-        }
     }
 
     #[derive(Debug, Error)]
@@ -157,24 +152,16 @@ To add Disintegrate to your project, follow these steps:
             Self {
                 user_id: user_id.into(),
                 items: HashSet::new(),
-                changes: vec![],
             }
         }
 
-        fn apply(&mut self, event: CartEvent) {
-            self.mutate(event.clone());
-            self.changes.push(event);
-        }
-
-        pub fn add_item(&mut self, item_id: &str, quantity: u32) -> Result<(), CartError> {
+        pub fn add_item(&self, item_id: &str, quantity: u32) -> Result<Vec<CartEvent>, CartError> {
             // check your business constraints...
-
-            self.apply(CartEvent::ItemAdded {
+            Ok(vec![CartEvent::ItemAdded {
                 user_id: self.user_id.clone(),
                 item_id: item_id.to_string(),
                 quantity,
-            });
-            Ok(())
+            }])
         }
     }
     ```
@@ -211,13 +198,13 @@ To add Disintegrate to your project, follow these steps:
 
         // Hydrate the `Cart` from the event store
         let user_id = "user-1";
-        let mut cart = event_store.hydrate(Cart::new(user_id)).await?;
+        let cart = event_store.hydrate(Cart::new(user_id)).await?;
 
         // Invoke add item method on the hydrated cart
-        cart.add_item("item-1", 4)?;
+        let changes = cart.add_item("item-1", 4)?;
 
-        // Save the new state
-        event_store.save(&mut cart).await?;
+        // Save the changes 
+        event_store.save(&cart, changes).await?;
         Ok(())
     }
     ```

@@ -19,14 +19,13 @@ impl Item {
 pub struct Cart {
     user_id: String,
     items: HashSet<Item>,
-    changes: Vec<CartEvent>,
 }
 
 impl State for Cart {
     type Event = CartEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        query!(Self::Event, user_id == self.user_id.clone())
+        query!(CartEvent, user_id == self.user_id.clone())
     }
 
     fn mutate(&mut self, event: Self::Event) {
@@ -48,10 +47,6 @@ impl State for Cart {
             }
         }
     }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self.changes)
-    }
 }
 
 #[derive(Debug, Error)]
@@ -65,23 +60,15 @@ impl Cart {
         Self {
             user_id: user_id.into(),
             items: HashSet::new(),
-            changes: vec![],
         }
     }
 
-    fn apply(&mut self, event: CartEvent) {
-        self.mutate(event.clone());
-        self.changes.push(event);
-    }
-
-    pub fn add_item(&mut self, item_id: &str, quantity: u32) -> Result<(), CartError> {
+    pub fn add_item(&self, item_id: &str, quantity: u32) -> Result<Vec<CartEvent>, CartError> {
         // check your business constraints...
-
-        self.apply(CartEvent::ItemAdded {
+        Ok(vec![CartEvent::ItemAdded {
             user_id: self.user_id.clone(),
             item_id: item_id.to_string(),
             quantity,
-        });
-        Ok(())
+        }])
     }
 }

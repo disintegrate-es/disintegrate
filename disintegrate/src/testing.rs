@@ -72,7 +72,7 @@ impl<S: State> TestHarnessStep<S, Given> {
 impl<S, R, E> TestHarnessStep<S, When<R, E>>
 where
     S: State,
-    <S as State>::Event: Debug + PartialEq,
+    R: Debug + PartialEq,
     E: Debug + PartialEq,
 {
     /// Makes assertions about the state changes.
@@ -86,9 +86,9 @@ where
     /// Panics if the action result is not `Ok` or if the state changes do not match the expected changes.
     ///
     /// # Examples
-    pub fn then(mut self, expected: Vec<S::Event>) {
+    pub fn then(self, expected: R) {
         assert!(self._step.result.is_ok());
-        assert_eq!(expected.as_ref(), self.state.changes());
+        assert_eq!(expected, self._step.result.unwrap());
     }
 
     /// Makes assertions about the expected error result.
@@ -108,6 +108,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
     use crate::event::{Event, EventSchema};
     use crate::state::State;
@@ -156,10 +158,6 @@ mod tests {
         fn mutate(&mut self, event: Self::Event) {
             self.changes.push(event);
         }
-
-        fn changes(&mut self) -> Vec<Self::Event> {
-            std::mem::take(&mut self.changes)
-        }
     }
 
     #[test]
@@ -167,9 +165,11 @@ mod tests {
         let history = vec![SampleEvent::Created("x".into())];
 
         TestHarness::given(SampleState::new(), history)
-            .when(|s| {
-                s.mutate(SampleEvent::Deleted("x".into()));
-                Ok::<(), String>(())
+            .when(|_s| {
+                Ok::<Vec<SampleEvent>, String>(vec![
+                    SampleEvent::Created("x".into()),
+                    SampleEvent::Deleted("x".into()),
+                ])
             })
             .then(vec![
                 SampleEvent::Created("x".into()),
@@ -181,7 +181,7 @@ mod tests {
     #[should_panic]
     fn it_should_panic_when_action_failed_and_events_were_expected() {
         TestHarness::given(SampleState::new(), [])
-            .when(|_| Err::<(), &'static str>("Some error"))
+            .when(|_| Err::<Vec<SampleEvent>, &'static str>("Some error"))
             .then(vec![SampleEvent::Deleted("x".into())]);
     }
 

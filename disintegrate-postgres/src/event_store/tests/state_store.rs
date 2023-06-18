@@ -34,21 +34,16 @@ impl Event for SampleEvent {
 struct SampleState {
     id: String,
     value: String,
-    _changes: Vec<SampleEvent>,
 }
 
 impl State for SampleState {
     type Event = SampleEvent;
     fn query(&self) -> StreamQuery<Self::Event> {
-        query!(Self::Event, id == self.id.clone())
+        query!(SampleEvent, id == self.id.clone())
     }
 
     fn mutate(&mut self, event: Self::Event) {
         self.value = event.value;
-    }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self._changes)
     }
 }
 
@@ -61,7 +56,6 @@ async fn it_hydrates_state_from_empty_event_store(pool: sqlx::PgPool) {
     let default_state = SampleState {
         id: "some id".into(),
         value: "test".into(),
-        _changes: vec![],
     };
 
     let hydrated_state = event_store.hydrate(default_state.clone()).await;
@@ -93,7 +87,6 @@ async fn it_hydrates_state(pool: sqlx::PgPool) {
     let default_state = SampleState {
         id: "some id".into(),
         value: "".into(),
-        _changes: vec![],
     };
 
     let hydrated_state = event_store.hydrate(default_state.clone()).await;
@@ -116,14 +109,16 @@ async fn it_saves_state(pool: sqlx::PgPool) {
     let default_state = SampleState {
         id: "some id".into(),
         value: "test".into(),
-        _changes: vec![SampleEvent {
-            id: "some id".into(),
-            value: "test".into(),
-        }],
     };
-    let mut hydrated_state = Hydrated::new(default_state, 1);
+    let hydrated_state = Hydrated::new(default_state, 1);
 
-    let save_result = event_store.save(&mut hydrated_state).await;
-    assert!(save_result.is_ok());
-    assert_eq!(hydrated_state._changes.len(), 0);
+    let change = SampleEvent {
+        id: "some id".into(),
+        value: "test".into(),
+    };
+    let save_result = event_store
+        .save(&hydrated_state, vec![change.clone()])
+        .await
+        .unwrap();
+    assert_eq!(change, save_result.first().unwrap().clone().into_inner());
 }

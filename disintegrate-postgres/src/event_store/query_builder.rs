@@ -86,13 +86,8 @@ where
 
         // Build the event types condition
         if !QE::SCHEMA.types.is_empty() {
-            let list = QE::SCHEMA
-                .types
-                .iter()
-                .map(|t| format!("'{t}'"))
-                .collect::<Vec<_>>()
-                .join(",");
-            self.builder.push(format!(" AND event_type IN ({list})"));
+            self.builder
+                .push(format!(" AND {}", event_types_in(QE::SCHEMA.types)));
         }
 
         if let Some(end) = self.end {
@@ -123,6 +118,9 @@ where
     /// The generated SQL condition as a `String`.
     fn eval(&mut self, filter: &StreamFilter) -> Self::Result {
         match filter {
+            StreamFilter::Events { names } => {
+                self.builder.push(event_types_in(names));
+            }
             StreamFilter::Eq { ident, value } => {
                 self.builder.push(format!("{ident} = "));
                 self.builder.push_bind(value.clone());
@@ -145,19 +143,34 @@ where
     }
 }
 
+fn event_types_in(types: &[&str]) -> String {
+    format!(
+        "event_type IN ({})",
+        types
+            .iter()
+            .map(|t| format!("'{t}'"))
+            .collect::<Vec<String>>()
+            .join(",")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use disintegrate::{domain_identifiers, query, DomainIdentifierSet, Event, EventSchema};
     use sqlx::Execute;
 
+    #[allow(dead_code)]
     #[derive(Clone)]
-    enum TestEvent {}
+    enum TestEvent {
+        Bar { bar_id: String },
+        Foo { foo_id: String },
+    }
 
     impl Event for TestEvent {
         const SCHEMA: EventSchema = EventSchema {
-            types: &[],
-            domain_identifiers: &[],
+            types: &["Bar", "Foo"],
+            domain_identifiers: &["foo_id", "bar_id"],
         };
 
         fn name(&self) -> &'static str {
@@ -170,58 +183,69 @@ mod tests {
 
     #[test]
     fn it_builds_query_with_an_eq_filter() {
-        let query = query!(TestEvent, id == "value");
+        let query = query!(TestEvent, foo_id == "value");
         let mut sql_builder = QueryBuilder::new(&query, "SELECT * FROM event WHERE ");
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE event_id >= 0 AND (id = $1)"#
+            r#"SELECT * FROM event WHERE event_id >= 0 AND (foo_id = $1) AND event_type IN ('Bar','Foo')"#
         );
     }
 
     #[test]
     fn it_builds_query_with_an_and_filter() {
-        let query = query!(TestEvent, (id1 == "value") and (id2 == "value2"));
+        let query = query!(TestEvent, (foo_id == "value") and (bar_id == "value2"));
         let mut sql_builder = QueryBuilder::new(&query, "SELECT * FROM event WHERE ");
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE event_id >= 0 AND ((id1 = $1) AND (id2 = $2))"#
+            r#"SELECT * FROM event WHERE event_id >= 0 AND ((foo_id = $1) AND (bar_id = $2)) AND event_type IN ('Bar','Foo')"#
         );
     }
 
     #[test]
     fn it_builds_query_with_an_or_filter() {
-        let query = query!(TestEvent, (id1 == "value") or (id2 == "value2"));
+        let query = query!(TestEvent, (foo_id == "value") or (bar_id == "value2"));
         let mut sql_builder = QueryBuilder::new(&query, "SELECT * FROM event WHERE ");
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE event_id >= 0 AND ((id1 = $1) OR (id2 = $2))"#
+            r#"SELECT * FROM event WHERE event_id >= 0 AND ((foo_id = $1) OR (bar_id = $2)) AND event_type IN ('Bar','Foo')"#
         );
     }
 
     #[test]
     fn it_builds_query_with_origin() {
-        let query = query!(TestEvent, id == "value");
+        let query = query!(TestEvent, foo_id == "value");
         let mut sql_builder =
             QueryBuilder::new(&query, "SELECT * FROM event WHERE ").with_origin(10);
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE event_id >= 10 AND (id = $1)"#
+            r#"SELECT * FROM event WHERE event_id >= 10 AND (foo_id = $1) AND event_type IN ('Bar','Foo')"#
         );
     }
 
     #[test]
     fn it_builds_query_with_last_event_id() {
-        let query = query!(TestEvent, id == "value");
+        let query = query!(TestEvent, foo_id == "value");
         let mut sql_builder =
             QueryBuilder::new(&query, "SELECT * FROM event WHERE ").with_last_event_id(20);
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE event_id >= 0 AND event_id <= 20 AND (id = $1)"#
+            r#"SELECT * FROM event WHERE event_id >= 0 AND event_id <= 20 AND (foo_id = $1) AND event_type IN ('Bar','Foo')"#
+        );
+    }
+
+    #[test]
+    fn it_builds_query_with_events_filter() {
+        let query = query!(TestEvent, (bar_id == "value1") and (events[Foo]));
+        let mut sql_builder = QueryBuilder::new(&query, "SELECT * FROM event WHERE ");
+
+        assert_eq!(
+            sql_builder.build().sql(),
+            r#"SELECT * FROM event WHERE event_id >= 0 AND ((bar_id = $1) AND (event_type IN ('Foo'))) AND event_type IN ('Bar','Foo')"#
         );
     }
 }

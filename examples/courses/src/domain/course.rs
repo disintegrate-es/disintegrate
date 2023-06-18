@@ -25,7 +25,6 @@ pub struct Course {
     seats: u32,
     created: bool,
     closed: bool,
-    changes: Vec<CourseEvent>,
 }
 
 impl Course {
@@ -36,16 +35,10 @@ impl Course {
             seats: 0,
             created: false,
             closed: false,
-            changes: vec![],
         }
     }
 
-    fn apply(&mut self, event: CourseEvent) {
-        self.mutate(event.clone());
-        self.changes.push(event);
-    }
-
-    pub fn create(&mut self, name: &str, seats: u32) -> Result<(), CourseError> {
+    pub fn create(&self, name: &str, seats: u32) -> Result<Vec<CourseEvent>, CourseError> {
         if self.created {
             return Err(CourseError::AlreadyCreated);
         }
@@ -54,15 +47,14 @@ impl Course {
             return Err(CourseError::NameEmpty);
         }
 
-        self.apply(CourseEvent::CourseCreated {
+        Ok(vec![CourseEvent::CourseCreated {
             course_id: self.course_id.clone(),
             name: name.to_string(),
             seats,
-        });
-        Ok(())
+        }])
     }
 
-    pub fn rename(&mut self, name: &str) -> Result<(), CourseError> {
+    pub fn rename(&self, name: &str) -> Result<Vec<CourseEvent>, CourseError> {
         if !self.created {
             return Err(CourseError::NotFound);
         }
@@ -71,14 +63,13 @@ impl Course {
             return Err(CourseError::NameEmpty);
         }
 
-        self.apply(CourseEvent::CourseRenamed {
+        Ok(vec![CourseEvent::CourseRenamed {
             course_id: self.course_id.clone(),
             name: name.to_string(),
-        });
-        Ok(())
+        }])
     }
 
-    pub fn close(&mut self) -> Result<(), CourseError> {
+    pub fn close(&self) -> Result<Vec<CourseEvent>, CourseError> {
         if !self.created {
             return Err(CourseError::NotFound);
         }
@@ -87,10 +78,9 @@ impl Course {
             return Err(CourseError::AlreadyClosed);
         }
 
-        self.apply(CourseEvent::CourseClosed {
+        Ok(vec![CourseEvent::CourseClosed {
             course_id: self.course_id.clone(),
-        });
-        Ok(())
+        }])
     }
 }
 
@@ -98,7 +88,7 @@ impl State for Course {
     type Event = CourseEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(Self::Event, course_id == self.course_id.clone())
+        disintegrate::query!(CourseEvent, course_id == self.course_id.clone())
     }
 
     fn mutate(&mut self, event: Self::Event) {
@@ -115,10 +105,6 @@ impl State for Course {
                 self.name = name;
             }
         }
-    }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self.changes)
     }
 }
 

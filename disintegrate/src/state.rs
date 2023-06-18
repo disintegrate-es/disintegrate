@@ -1,8 +1,8 @@
 //! A state object represents a business concept built from events.
 use async_trait::async_trait;
 
-use crate::event::Event;
 use crate::stream_query::StreamQuery;
+use crate::{event::Event, PersistedEvent};
 use std::ops::{Deref, DerefMut};
 
 /// Defines the behavior of State objects.
@@ -18,16 +18,17 @@ pub trait State: Clone + Send + Sync {
 
     /// Mutates the state object based on the provided event.
     fn mutate(&mut self, event: Self::Event);
-
-    /// Returns a vector of changes that have been applied to the state object.
-    fn changes(&mut self) -> Vec<Self::Event>;
 }
+
 /// Defines the behavior of a state storage mechanism.
 ///
 /// It provides methods for hydrating and saving state objects. The associated `Error` type
 /// represents the possible errors that can occur during state storage operations.
 #[async_trait]
-pub trait StateStore<E> {
+pub trait StateStore<E>
+where
+    E: Event,
+{
     type Error: std::error::Error + Send + Sync + 'static;
     /// Hydrates a state object from the state store.
     ///
@@ -42,15 +43,14 @@ pub trait StateStore<E> {
         QE: TryFrom<E> + Event + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: std::fmt::Debug + Send;
 
-    /// Saves the state object to the state store.
-    ///
-    /// It takes a mutable reference to a `Hydrated` object and saves its state to the store
-    async fn save<QE, S: State<Event = QE>>(
+    /// Persists the changes derived from the given state into the event store.
+    async fn save<CE, S: State>(
         &self,
-        state: &mut Hydrated<S>,
-    ) -> Result<(), Self::Error>
+        state: &Hydrated<S>,
+        changes: Vec<CE>,
+    ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
     where
-        QE: Into<E> + Event + Clone + Send + Sync;
+        CE: Into<E> + Event + Clone + Send + Sync;
 }
 
 /// Wrapper of a state object along with its version.
