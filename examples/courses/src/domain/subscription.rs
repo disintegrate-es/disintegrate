@@ -34,7 +34,6 @@ pub struct Student {
 pub struct Subscription {
     course: Course,
     student: Student,
-    changes: Vec<SubscriptionEvent>,
 }
 
 impl Subscription {
@@ -48,16 +47,10 @@ impl Subscription {
                 id: student_id,
                 ..Default::default()
             },
-            ..Default::default()
         }
     }
 
-    fn apply(&mut self, event: SubscriptionEvent) {
-        self.mutate(event.clone());
-        self.changes.push(event);
-    }
-
-    pub fn subscribe(&mut self) -> Result<(), SubscriptionError> {
+    pub fn subscribe(&self) -> Result<Vec<SubscriptionEvent>, SubscriptionError> {
         const MAX_STUDENT_COURSES: usize = 2;
 
         if !self.student.registered {
@@ -85,11 +78,10 @@ impl Subscription {
             return Err(SubscriptionError::StudentHasTooManyCourses);
         }
 
-        self.apply(SubscriptionEvent::StudentSubscribed {
+        Ok(vec![SubscriptionEvent::StudentSubscribed {
             course_id: self.course.id.clone(),
             student_id: self.student.id.clone(),
-        });
-        Ok(())
+        }])
     }
 }
 
@@ -98,7 +90,7 @@ impl State for Subscription {
 
     fn query(&self) -> StreamQuery<Self::Event> {
         disintegrate::query!(
-            Self::Event,
+            SubscriptionEvent,
                 (course_id == self.course.id.clone()) or
                 (student_id == self.student.id.clone())
         )
@@ -144,10 +136,6 @@ impl State for Subscription {
             }
             SubscriptionEvent::StudentRegistered { .. } => self.student.registered = true,
         }
-    }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self.changes)
     }
 }
 

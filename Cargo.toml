@@ -18,6 +18,7 @@ members = [
 	"disintegrate-postgres",
 	"disintegrate-serde",
 	"examples/cart",
-	"examples/courses"
+	"examples/courses",
+	"examples/banking"
 ]
 

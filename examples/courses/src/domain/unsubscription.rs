@@ -13,7 +13,6 @@ pub struct Unsubscription {
     course_id: CourseId,
     student_id: StudentId,
     student_subscribed: bool,
-    changes: Vec<UnsubscriptionEvent>,
 }
 
 impl Unsubscription {
@@ -25,21 +24,15 @@ impl Unsubscription {
         }
     }
 
-    fn apply(&mut self, event: UnsubscriptionEvent) {
-        self.mutate(event.clone());
-        self.changes.push(event);
-    }
-
-    pub fn unsubscribe(&mut self) -> Result<(), UnsubscriptionError> {
+    pub fn unsubscribe(&self) -> Result<Vec<UnsubscriptionEvent>, UnsubscriptionError> {
         if !self.student_subscribed {
             return Err(UnsubscriptionError::StudentNotSubscribed);
         }
 
-        self.apply(UnsubscriptionEvent::StudentUnsubscribed {
+        Ok(vec![UnsubscriptionEvent::StudentUnsubscribed {
             course_id: self.course_id.clone(),
             student_id: self.student_id.clone(),
-        });
-        Ok(())
+        }])
     }
 }
 
@@ -48,7 +41,7 @@ impl State for Unsubscription {
 
     fn query(&self) -> StreamQuery<Self::Event> {
         disintegrate::query!(
-            Self::Event,
+            UnsubscriptionEvent,
                 (course_id == self.course_id.clone()) and
                 (student_id == self.student_id.clone())
         )
@@ -63,10 +56,6 @@ impl State for Unsubscription {
                 self.student_subscribed = false;
             }
         }
-    }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self.changes)
     }
 }
 

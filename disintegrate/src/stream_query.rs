@@ -60,6 +60,11 @@ pub fn query<E: Clone>(filter: Option<StreamFilter>) -> StreamQuery<E> {
     }
 }
 
+/// Creates a new filter that allows you to specify a subset of events to pass through.
+pub fn events(names: &'static [&'static str]) -> StreamFilter {
+    StreamFilter::Events { names }
+}
+
 /// Creates a filter that checks for equality between an identifier and a value.
 pub fn eq(ident: Identifier, value: impl ToString) -> StreamFilter {
     StreamFilter::Eq {
@@ -97,25 +102,54 @@ macro_rules! query {
         $crate::stream_query::query::<$event_ty>(None).change_origin($origin)
     }};
     ($origin:expr; $event_ty:ty,  $($filter:tt)+ ) => {{
-        $crate::stream_query::query::<$event_ty>(Some($crate::filter!($($filter)*))).change_origin($origin)
+        $crate::stream_query::query::<$event_ty>(Some($crate::filter!($event_ty, $($filter)*))).change_origin($origin)
     }};
 }
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! filter {
-    ($ident:ident == $value:expr) => {
-       $crate::stream_query::eq($crate::ident!(#$ident), $value)
+    ($event_ty:ty, events[$($events:ty),+]) =>{
+        {
+            use $crate::Event;
+            const TYPES: &[&str] = {
+                const FILTER_ARG: &[&str] = &[$(stringify!($events),)+];
+                if !$crate::utils::include(<$event_ty>::SCHEMA.types, FILTER_ARG) {
+                    panic!("Invalid events filter: specified events not found");
+                }
+                FILTER_ARG
+            };
+            $crate::stream_query::events(TYPES)
+        }
     };
-    (($($h:tt)+) and ($($t:tt)+)) => {
-       $crate::stream_query::and($crate::filter!($($h)+), $crate::filter!($($t)+))
+    ($event_ty:ty, $ident:ident == $value:expr) => {
+        {
+            use $crate::Event;
+            const _: &[&str] = {
+                const FILTER_ARG: &[&str] = &[stringify!($ident)];
+                if !$crate::utils::include(<$event_ty>::SCHEMA.domain_identifiers, FILTER_ARG) {
+                    panic!("Invalid eq filter: specified domain identifier does not exist");
+                }
+                FILTER_ARG
+            };
+            $crate::stream_query::eq($crate::ident!(#$ident), $value)
+        }
     };
-    (($($h:tt)+) or ($($t:tt)+)) => {
-       $crate::stream_query::or($crate::filter!($($h)+), $crate::filter!($($t)+))
+    ($event_ty:ty, ($($h:tt)+) and ($($t:tt)+)) => {
+       $crate::stream_query::and($crate::filter!($event_ty, $($h)+), $crate::filter!($event_ty, $($t)+))
+    };
+    ($event_ty:ty, ($($h:tt)+) or ($($t:tt)+)) => {
+       $crate::stream_query::or($crate::filter!($event_ty, $($h)+), $crate::filter!($event_ty, $($t)+))
     };
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StreamFilter {
+    /// Includes only the specified events.
+    Events {
+        /// The list of events to include.
+        names: &'static [&'static str],
+    },
     /// Checks for equality between an identifier and a value.
     Eq {
         /// The identifier to compare.
@@ -150,7 +184,49 @@ pub trait FilterEvaluator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ident;
+    use crate::{domain_identifiers, ident, DomainIdentifierSet, Event, EventSchema};
+
+    #[derive(Clone)]
+    #[allow(dead_code)]
+    enum ShoppingCartEvent {
+        Added {
+            product_id: String,
+            cart_id: String,
+            quantity: i64,
+        },
+        Removed {
+            product_id: String,
+            cart_id: String,
+            quantity: i64,
+        },
+    }
+
+    impl Event for ShoppingCartEvent {
+        const SCHEMA: EventSchema = EventSchema {
+            types: &["Added", "Removed"],
+            domain_identifiers: &["cart_id", "product_id"],
+        };
+        fn name(&self) -> &'static str {
+            match self {
+                ShoppingCartEvent::Added { .. } => "ShoppingCartAdded",
+                ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
+            }
+        }
+        fn domain_identifiers(&self) -> DomainIdentifierSet {
+            match self {
+                ShoppingCartEvent::Added {
+                    product_id,
+                    cart_id,
+                    ..
+                } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+                ShoppingCartEvent::Removed {
+                    product_id,
+                    cart_id,
+                    ..
+                } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+            }
+        }
+    }
 
     #[test]
     fn it_can_create_stream_query_with_filter() {
@@ -164,45 +240,66 @@ mod tests {
 
     #[test]
     fn it_can_create_stream_query_macros() {
-        let query_no_filter: StreamQuery<()> = query!(());
+        let query_no_filter: StreamQuery<ShoppingCartEvent> = query!(ShoppingCartEvent);
         assert_eq!(query_no_filter.filter(), None);
 
-        let query_with_filter: StreamQuery<()> = query!((), id == "123");
-        assert_eq!(query_with_filter.filter(), Some(&eq(ident!(#id), "123")));
+        let query_with_filter: StreamQuery<ShoppingCartEvent> =
+            query!(ShoppingCartEvent, cart_id == "123");
+        assert_eq!(
+            query_with_filter.filter(),
+            Some(&eq(ident!(#cart_id), "123"))
+        );
 
-        let query_with_origin: StreamQuery<()> = query!(42; (), id == "123");
+        let query_with_origin: StreamQuery<ShoppingCartEvent> =
+            query!(42; ShoppingCartEvent, cart_id == "123");
         assert_eq!(query_with_origin.origin(), 42);
-        assert_eq!(query_with_origin.filter(), Some(&eq(ident!(#id), "123")));
+        assert_eq!(
+            query_with_origin.filter(),
+            Some(&eq(ident!(#cart_id), "123"))
+        );
 
-        let query_with_origin_no_filter: StreamQuery<()> = query!(42; ());
+        let query_with_origin_no_filter: StreamQuery<ShoppingCartEvent> =
+            query!(42; ShoppingCartEvent);
         assert_eq!(query_with_origin_no_filter.origin(), 42);
         assert_eq!(query_with_origin_no_filter.filter(), None);
     }
 
     #[test]
     fn it_can_create_filter_macros() {
-        let filter = filter!(cart_id == "123");
+        let filter = filter!(ShoppingCartEvent, cart_id == "123");
         assert_eq!(filter, eq(ident!(#cart_id), "123"));
 
-        let filter = filter!((cart_id == "123") and (product_id == "345"));
+        let filter = filter!(ShoppingCartEvent, (cart_id == "123") and (product_id == "345"));
         assert_eq!(
             filter,
             and(eq(ident!(#cart_id), "123"), eq(ident!(#product_id), "345"))
         );
 
-        let filter = filter!((cart_id == "123") or (product_id == "345"));
+        let filter = filter!(ShoppingCartEvent, (cart_id == "123") or (product_id == "345"));
         assert_eq!(
             filter,
             or(eq(ident!(#cart_id), "123"), eq(ident!(#product_id), "345"))
         );
 
-        let filter = filter!(((cart_id == "123") and (product_id == "345")) or
+        let filter = filter!(ShoppingCartEvent, ((cart_id == "123") and (product_id == "345")) or
          ((cart_id == "678") and (product_id == "901")));
         assert_eq!(
             filter,
             or(
                 and(eq(ident!(#cart_id), "123"), eq(ident!(#product_id), "345")),
                 and(eq(ident!(#cart_id), "678"), eq(ident!(#product_id), "901"))
+            )
+        );
+
+        let filter = filter!(ShoppingCartEvent, (cart_id == "123") and ((product_id == "345") and (events[Added, Removed])));
+        assert_eq!(
+            filter,
+            and(
+                eq(ident!(#cart_id), "123"),
+                and(
+                    eq(ident!(#product_id), "345"),
+                    events(&["Added", "Removed"])
+                )
             )
         );
     }

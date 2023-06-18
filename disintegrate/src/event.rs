@@ -43,8 +43,8 @@ impl<E: Event> PersistedEvent<E> {
         Self { id, event }
     }
 
-    /// Unwraps the inner event, returning it.
-    pub fn unwrap(self) -> E {
+    /// Returns the inner event.
+    pub fn into_inner(self) -> E {
         self.event
     }
 

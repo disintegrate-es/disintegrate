@@ -25,12 +25,12 @@ async fn main() -> Result<()> {
 
     // Hydrate the `Cart` from the event store
     let user_id = "user-1";
-    let mut cart = event_store.hydrate(Cart::new(user_id)).await?;
+    let cart = event_store.hydrate(Cart::new(user_id)).await?;
 
     // Invoke add item method on the hydrated cart
-    cart.add_item("item-1", 4)?;
+    let changes = cart.add_item("item-1", 4)?;
 
     // Save the new state
-    event_store.save(&mut cart).await?;
+    event_store.save(&cart, changes).await?;
     Ok(())
 }

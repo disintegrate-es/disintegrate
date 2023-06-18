@@ -19,7 +19,6 @@ pub struct Student {
     student_id: StudentId,
     name: String,
     registered: bool,
-    changes: Vec<StudentEvent>,
 }
 
 impl Student {
@@ -28,16 +27,10 @@ impl Student {
             student_id,
             name: "".to_string(),
             registered: false,
-            changes: vec![],
         }
     }
 
-    fn apply(&mut self, event: StudentEvent) {
-        self.mutate(event.clone());
-        self.changes.push(event);
-    }
-
-    pub fn register(&mut self, name: &str) -> Result<(), StudentError> {
+    pub fn register(&self, name: &str) -> Result<Vec<StudentEvent>, StudentError> {
         if self.registered {
             return Err(StudentError::AlreadyRegistered);
         }
@@ -45,11 +38,10 @@ impl Student {
             return Err(StudentError::NameEmpty);
         }
 
-        self.apply(StudentEvent::StudentRegistered {
+        Ok(vec![StudentEvent::StudentRegistered {
             student_id: self.student_id.clone(),
             name: name.into(),
-        });
-        Ok(())
+        }])
     }
 }
 
@@ -57,7 +49,7 @@ impl State for Student {
     type Event = StudentEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(Self::Event, student_id == self.student_id.clone())
+        disintegrate::query!(StudentEvent, student_id == self.student_id.clone())
     }
 
     fn mutate(&mut self, event: Self::Event) {
@@ -67,10 +59,6 @@ impl State for Student {
                 self.name = name;
             }
         }
-    }
-
-    fn changes(&mut self) -> Vec<Self::Event> {
-        std::mem::take(&mut self.changes)
     }
 }
 

@@ -67,7 +67,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
     }
 
     async fn handle(&self, event: PersistedEvent<DomainEvent>) -> Result<(), Self::Error> {
-        match event.unwrap() {
+        match event.into_inner() {
             DomainEvent::CourseCreated {
                 course_id,
                 name,

@@ -99,7 +99,7 @@ impl EventListener<ShoppingCartEvent> for CartEventHandler {
         &self,
         persisted_event: PersistedEvent<ShoppingCartEvent>,
     ) -> Result<(), Self::Error> {
-        match persisted_event.unwrap() {
+        match persisted_event.into_inner() {
             ShoppingCartEvent::Added(payload) => {
                 sqlx::query("INSERT INTO carts (cart_id, product_id, quantity) VALUES($1, $2, $3)")
                     .bind(payload.cart_id.clone())

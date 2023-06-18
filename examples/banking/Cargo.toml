@@ -1,0 +1,17 @@
+[package]
+name = "banking"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.13.0", features = ["macros", "rt-multi-thread", "signal"] }
+disintegrate = { version = "0.3.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
+disintegrate-postgres = { version = "0.3.0", path = "../../disintegrate-postgres" }
+serde = { version = "1.0.163", features = ["derive"] }
+thiserror = "1.0.40"
+anyhow = "1.0.71"
+dotenv = "0.15.0"
+sqlx = { version = "0.6.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
+actix-web = "4.3.1"

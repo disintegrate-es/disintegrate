@@ -6,6 +6,7 @@ mod listener;
 pub mod state;
 pub mod stream_query;
 mod testing;
+pub mod utils;
 
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
 pub use crate::event::{Event, EventSchema, PersistedEvent};

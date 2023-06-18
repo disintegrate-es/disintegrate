@@ -284,8 +284,7 @@ where
         .bind(self.event_handler.id())
         .execute(&mut tx)
         .await?;
-        tx.commit().await?;
-        Ok(())
+        tx.commit().await
     }
 
     pub async fn handle_events_from(

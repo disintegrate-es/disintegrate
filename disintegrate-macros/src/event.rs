@@ -1,13 +1,11 @@
 mod group;
-mod utils;
 
 use group::{groups, impl_group};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{Data, DeriveInput};
 use syn::{DataEnum, DataStruct, Fields};
-use utils::{const_slice_unique, const_slices_concat, utils_mod};
 
 pub fn event_inner(ast: &DeriveInput) -> TokenStream {
     match ast.data {
@@ -82,10 +80,12 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
             .fold(quote!(&[]), |acc, variant| match &variant.fields {
                 Fields::Unnamed(fields) => {
                     let payload_type = &fields.unnamed.first().unwrap().ty;
-                    const_slices_concat(
-                        quote!(#acc),
-                        quote!(#payload_type::SCHEMA.domain_identifiers),
-                    )
+                    quote! {
+                        disintegrate::const_slices_concat!(
+                            #acc,
+                            #payload_type::SCHEMA.domain_identifiers
+                        )
+                    }
                 }
                 Fields::Named(fields) => {
                     let identifiers_fields: Vec<_> = fields
@@ -94,10 +94,11 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
                         .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("id")))
                         .map(|f| f.ident.as_ref().map(ToString::to_string))
                         .collect();
-
-                    const_slices_concat(quote!(#acc), quote!(&[#(#identifiers_fields,)*]))
+                    quote! {
+                        disintegrate::const_slices_concat!(#acc, &[#(#identifiers_fields,)*])
+                    }
                 }
-                Fields::Unit => const_slices_concat(quote!(#acc), quote!(&[])),
+                Fields::Unit => quote!(disintegrate::const_slices_concat!(#acc, &[])),
             });
 
     let types = data
@@ -105,11 +106,9 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
         .iter()
         .map(|variant| variant.ident.to_string());
 
-    let event_util_mod_name = format_ident!("disintegrate_{name}_utils");
-    let event_util_mod = utils_mod(&event_util_mod_name);
-
-    let impl_domain_identifiers_schema =
-        const_slice_unique(&event_util_mod_name, domain_identifiers_slice);
+    let impl_domain_identifiers_schema = quote! {
+        disintegrate::const_slice_unique!(#domain_identifiers_slice)
+    };
     quote! {
         impl disintegrate::Event for #name {
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema {
@@ -129,9 +128,6 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
                  }
             }
         }
-
-        #event_util_mod
-
     }
 }
 
