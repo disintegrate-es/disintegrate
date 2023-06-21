@@ -49,7 +49,7 @@ impl State for Student {
     type Event = StudentEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(StudentEvent, student_id == self.student_id.clone())
+        disintegrate::query!(StudentEvent, student_id == self.student_id)
     }
 
     fn mutate(&mut self, event: Self::Event) {

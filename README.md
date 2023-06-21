@@ -117,7 +117,7 @@ To add Disintegrate to your project, follow these steps:
         type Event = CartEvent;
 
         fn query(&self) -> StreamQuery<Self::Event> {
-            query!(CartEvent, user_id == self.user_id.clone())
+            query!(CartEvent, user_id == self.user_id)
         }
 
         fn mutate(&mut self, event: Self::Event) {

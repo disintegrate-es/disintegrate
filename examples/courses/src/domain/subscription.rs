@@ -91,8 +91,8 @@ impl State for Subscription {
     fn query(&self) -> StreamQuery<Self::Event> {
         disintegrate::query!(
             SubscriptionEvent,
-                (course_id == self.course.id.clone()) or
-                (student_id == self.student.id.clone())
+                (course_id == self.course.id) or
+                (student_id == self.student.id)
         )
     }
 

@@ -39,12 +39,12 @@ impl Event for ShoppingCartEvent {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
             ShoppingCartEvent::Removed {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
         }
     }
 }
@@ -119,7 +119,7 @@ async fn it_appends_events(pool: PgPool) {
     assert_eq!(persisted_event.name(), "ShoppingCartAdded");
     assert_eq!(
         persisted_event.domain_identifiers(),
-        domain_identifiers! {product_id: "product_1".to_string(), cart_id: "cart_1".to_string()},
+        domain_identifiers! {product_id: "product_1", cart_id: "cart_1"},
     );
 }
 

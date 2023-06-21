@@ -61,7 +61,7 @@ impl State for Account {
     type Event = DomainEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        query!(DomainEvent, (account_id == self.id.clone()) or (beneficiary_id == self.id.clone()))
+        query!(DomainEvent, (account_id == self.id) or (beneficiary_id == self.id))
     }
 
     fn mutate(&mut self, event: Self::Event) {
@@ -167,7 +167,7 @@ impl State for Transfer {
     type Event = DomainEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        query!(DomainEvent, ((account_id == self.account_id.clone()) or (beneficiary_id == self.account_id.clone())) or ((account_id == self.beneficiary_id.clone()) and (events[AccountOpened, AccountClosed])))
+        query!(DomainEvent, ((account_id == self.account_id) or (beneficiary_id == self.account_id)) or ((account_id == self.beneficiary_id) and (events[AccountOpened, AccountClosed])))
     }
 
     fn mutate(&mut self, event: Self::Event) {

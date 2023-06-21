@@ -152,12 +152,12 @@ mod tests {
                     product_id,
                     cart_id,
                     ..
-                } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
                 ShoppingCartEvent::Removed {
                     product_id,
                     cart_id,
                     ..
-                } => domain_identifiers! {product_id: product_id.clone(), cart_id: cart_id.clone()},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
             }
         }
     }

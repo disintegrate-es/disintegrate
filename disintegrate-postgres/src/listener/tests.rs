@@ -32,7 +32,7 @@ impl Event for ShoppingCartEvent {
     fn domain_identifiers(&self) -> DomainIdentifierSet {
         match self {
             ShoppingCartEvent::Added(payload) | ShoppingCartEvent::Removed(payload) => {
-                domain_identifiers! {product_id: payload.product_id.clone(), cart_id: payload.cart_id.clone()}
+                domain_identifiers! {product_id: payload.product_id, cart_id: payload.cart_id}
             }
         }
     }
@@ -134,7 +134,7 @@ async fn it_handles_events(pool: PgPool) {
     let product_id = "product_1".to_string();
     let query = query!(
         ShoppingCartEvent,
-        (cart_id == cart_id.clone()) or (product_id == product_id.clone())
+        (cart_id == cart_id) or (product_id == product_id)
     );
     let _result = event_store
         .append(
@@ -180,7 +180,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
     let product_id = "product_1".to_string();
     let query = query!(
         ShoppingCartEvent,
-        (cart_id == cart_id.clone()) or (product_id == product_id.clone())
+        (cart_id == cart_id) or (product_id == product_id)
     );
     let append_handle = event_store.append(
         vec![ShoppingCartEvent::Added(CartEventPayload {
