@@ -26,7 +26,7 @@ impl Event for SampleEvent {
         "SampleEvent"
     }
     fn domain_identifiers(&self) -> DomainIdentifierSet {
-        domain_identifiers! {id: self.id.clone()}
+        domain_identifiers! {id: self.id}
     }
 }
 
@@ -39,7 +39,7 @@ struct SampleState {
 impl State for SampleState {
     type Event = SampleEvent;
     fn query(&self) -> StreamQuery<Self::Event> {
-        query!(SampleEvent, id == self.id.clone())
+        query!(SampleEvent, id == self.id)
     }
 
     fn mutate(&mut self, event: Self::Event) {

@@ -88,7 +88,7 @@ impl State for Course {
     type Event = CourseEvent;
 
     fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(CourseEvent, course_id == self.course_id.clone())
+        disintegrate::query!(CourseEvent, course_id == self.course_id)
     }
 
     fn mutate(&mut self, event: Self::Event) {

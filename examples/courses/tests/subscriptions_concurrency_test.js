@@ -15,11 +15,11 @@ export let options = {
     duration: '30s',
 };
 
-// Create course with 10000 seats
 const client = new grpc.Client();
 client.load(['../proto'], 'api.proto');
 
 export function setup() {
+    // Create course
     client.connect(serverUrl, { plaintext: true });
     client.invoke('api.Course/Create', course);
     // Register students

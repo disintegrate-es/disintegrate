@@ -42,8 +42,8 @@ impl State for Unsubscription {
     fn query(&self) -> StreamQuery<Self::Event> {
         disintegrate::query!(
             UnsubscriptionEvent,
-                (course_id == self.course_id.clone()) and
-                (student_id == self.student_id.clone())
+                (course_id == self.course_id) and
+                (student_id == self.student_id)
         )
     }
 
