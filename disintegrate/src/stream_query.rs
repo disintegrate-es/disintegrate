@@ -29,6 +29,9 @@ pub struct StreamQuery<E: Clone> {
     /// The starting point of the event stream query. It represents the position in the
     /// event stream from where the query begins, and only events occurring after the origin will be considered.
     origin: i64,
+    /// It contains the list of events that will be excluded from the query result.
+    /// For instance, this can be used to define the validation query of a `Decision` from the `State` query.
+    excluded_events: &'static [&'static str],
     /// A marker indicating the event type associated with the stream query.
     event_type: PhantomData<E>,
 }
@@ -44,9 +47,20 @@ impl<E: Clone> StreamQuery<E> {
         self.origin
     }
 
+    /// Returns the list of excluded events.
+    pub fn excluded_events(&self) -> &'static [&'static str] {
+        self.excluded_events
+    }
+
     /// Changes the origin of the event stream query and returns the modified query.
     pub fn change_origin(mut self, origin: i64) -> Self {
         self.origin = origin;
+        self
+    }
+
+    /// Sets the list of event types that will be excluded from the query result.
+    pub fn exclude_events(mut self, types: &'static [&'static str]) -> Self {
+        self.excluded_events = types;
         self
     }
 }
@@ -56,6 +70,7 @@ pub fn query<E: Clone>(filter: Option<StreamFilter>) -> StreamQuery<E> {
     StreamQuery {
         filter,
         origin: 0,
+        excluded_events: &[],
         event_type: PhantomData,
     }
 }
@@ -106,21 +121,32 @@ macro_rules! query {
     }};
 }
 
+/// A convenient macro to get the list of event types as a list of `&'static str`.
+/// It performs compile-time checks to guarantee that the specified variants exist.  
 #[macro_export]
-#[doc(hidden)]
-macro_rules! filter {
-    ($event_ty:ty, events[$($events:ty),+]) =>{
+macro_rules! events_types{
+    ($event_ty:ty, [$($events:ty),+]) =>{
         {
             use $crate::Event;
             const TYPES: &[&str] = {
                 const FILTER_ARG: &[&str] = &[$(stringify!($events),)+];
                 if !$crate::utils::include(<$event_ty>::SCHEMA.types, FILTER_ARG) {
-                    panic!("Invalid events filter: specified events not found");
+                    panic!("one or more of the specified events do not exist");
                 }
                 FILTER_ARG
             };
-            $crate::stream_query::events(TYPES)
+            TYPES
         }
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! filter {
+    ($event_ty:ty, events[$($events:ty),+]) =>{
+
+            $crate::stream_query::events($crate::events_types!($event_ty, [$($events),+]))
+
     };
     ($event_ty:ty, $ident:ident == $value:expr) => {
         {
@@ -302,5 +328,12 @@ mod tests {
                 )
             )
         );
+    }
+
+    #[test]
+    fn it_exclude_events() {
+        let query_with_exceptions: StreamQuery<()> =
+            query(None::<StreamFilter>).exclude_events(events_types!(ShoppingCartEvent, [Added]));
+        assert_eq!(query_with_exceptions.excluded_events, &["Added"]);
     }
 }

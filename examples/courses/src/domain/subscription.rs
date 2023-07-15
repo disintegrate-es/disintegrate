@@ -1,6 +1,6 @@
-use disintegrate::{State, StreamQuery};
+use disintegrate::{events_types, Decision, State, StreamQuery};
 
-use super::{CourseId, StudentId, SubscriptionEvent};
+use super::{CourseId, DomainEvent, StudentId, SubscriptionEvent};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SubscriptionError {
@@ -48,40 +48,6 @@ impl Subscription {
                 ..Default::default()
             },
         }
-    }
-
-    pub fn subscribe(&self) -> Result<Vec<SubscriptionEvent>, SubscriptionError> {
-        const MAX_STUDENT_COURSES: usize = 2;
-
-        if !self.student.registered {
-            return Err(SubscriptionError::StudentNotRegistered);
-        }
-
-        if self.course.closed {
-            return Err(SubscriptionError::CourseClosed);
-        }
-
-        if self.course.available_seats == 0 {
-            return Err(SubscriptionError::NoSeatsAvailable);
-        }
-
-        if self
-            .student
-            .subscribed_courses
-            .iter()
-            .any(|c| c == &self.course.id)
-        {
-            return Err(SubscriptionError::StudentAlreadySubscribed);
-        }
-
-        if self.student.subscribed_courses.len() >= MAX_STUDENT_COURSES {
-            return Err(SubscriptionError::StudentHasTooManyCourses);
-        }
-
-        Ok(vec![SubscriptionEvent::StudentSubscribed {
-            course_id: self.course.id.clone(),
-            student_id: self.student.id.clone(),
-        }])
     }
 }
 
@@ -139,28 +105,96 @@ impl State for Subscription {
     }
 }
 
+pub struct SubscribeStudent {
+    pub student_id: StudentId,
+    pub course_id: CourseId,
+}
+
+impl SubscribeStudent {
+    pub fn new(student_id: StudentId, course_id: CourseId) -> Self {
+        Self {
+            student_id,
+            course_id,
+        }
+    }
+}
+
+impl Decision for SubscribeStudent {
+    type Event = DomainEvent;
+
+    type State = Subscription;
+
+    type Error = SubscriptionError;
+
+    fn default_state(&self) -> Self::State {
+        Subscription::new(self.course_id.clone(), self.student_id.clone())
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+        Some(
+            self.default_state()
+                .query()
+                .exclude_events(events_types!(DomainEvent, [StudentUnsubscribed])),
+        )
+    }
+
+    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+        const MAX_STUDENT_COURSES: usize = 2;
+
+        if !state.student.registered {
+            return Err(SubscriptionError::StudentNotRegistered);
+        }
+
+        if state.course.closed {
+            return Err(SubscriptionError::CourseClosed);
+        }
+
+        if state.course.available_seats == 0 {
+            return Err(SubscriptionError::NoSeatsAvailable);
+        }
+
+        if state
+            .student
+            .subscribed_courses
+            .iter()
+            .any(|c| c == &self.course_id)
+        {
+            return Err(SubscriptionError::StudentAlreadySubscribed);
+        }
+
+        if state.student.subscribed_courses.len() >= MAX_STUDENT_COURSES {
+            return Err(SubscriptionError::StudentHasTooManyCourses);
+        }
+
+        Ok(vec![DomainEvent::StudentSubscribed {
+            course_id: self.course_id.clone(),
+            student_id: self.student_id.clone(),
+        }])
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn it_subscribes_a_student() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [
-                SubscriptionEvent::CourseCreated {
-                    course_id: "some course".to_string(),
-                    name: "some name".to_string(),
-                    seats: 1,
-                },
-                SubscriptionEvent::StudentRegistered {
-                    student_id: "some student".to_string(),
-                    name: "some name".to_string(),
-                },
-            ],
-        )
-        .when(|s| s.subscribe())
-        .then(vec![SubscriptionEvent::StudentSubscribed {
+        disintegrate::TestHarness::given([
+            SubscriptionEvent::CourseCreated {
+                course_id: "some course".to_string(),
+                name: "some name".to_string(),
+                seats: 1,
+            },
+            SubscriptionEvent::StudentRegistered {
+                student_id: "some student".to_string(),
+                name: "some name".to_string(),
+            },
+        ])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
+        .then([DomainEvent::StudentSubscribed {
             course_id: "some course".into(),
             student_id: "some student".into(),
         }]);
@@ -168,114 +202,114 @@ mod test {
 
     #[test]
     fn it_should_not_subscribe_an_unregistered_student() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [SubscriptionEvent::CourseCreated {
-                course_id: "some course".to_string(),
-                name: "some name".to_string(),
-                seats: 1,
-            }],
-        )
-        .when(|s| s.subscribe())
+        disintegrate::TestHarness::given([SubscriptionEvent::CourseCreated {
+            course_id: "some course".to_string(),
+            name: "some name".to_string(),
+            seats: 1,
+        }])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
         .then_err(SubscriptionError::StudentNotRegistered);
     }
 
     #[test]
     fn it_should_not_subscribe_a_student_to_a_closed_course() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [
-                SubscriptionEvent::CourseCreated {
-                    course_id: "some course".to_string(),
-                    name: "some name".to_string(),
-                    seats: 1,
-                },
-                SubscriptionEvent::StudentRegistered {
-                    student_id: "some student".to_string(),
-                    name: "some name".to_string(),
-                },
-                SubscriptionEvent::CourseClosed {
-                    course_id: "some course".to_string(),
-                },
-            ],
-        )
-        .when(|s| s.subscribe())
+        disintegrate::TestHarness::given([
+            SubscriptionEvent::CourseCreated {
+                course_id: "some course".to_string(),
+                name: "some name".to_string(),
+                seats: 1,
+            },
+            SubscriptionEvent::StudentRegistered {
+                student_id: "some student".to_string(),
+                name: "some name".to_string(),
+            },
+            SubscriptionEvent::CourseClosed {
+                course_id: "some course".to_string(),
+            },
+        ])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
         .then_err(SubscriptionError::CourseClosed);
     }
 
     #[test]
     fn it_should_not_subscribe_a_student_to_a_full_course() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [
-                SubscriptionEvent::CourseCreated {
-                    course_id: "some course".to_string(),
-                    name: "some name".to_string(),
-                    seats: 1,
-                },
-                SubscriptionEvent::StudentRegistered {
-                    student_id: "some student".to_string(),
-                    name: "some name".to_string(),
-                },
-                SubscriptionEvent::StudentSubscribed {
-                    student_id: "another student".to_string(),
-                    course_id: "some course".to_string(),
-                },
-            ],
-        )
-        .when(|s| s.subscribe())
+        disintegrate::TestHarness::given([
+            SubscriptionEvent::CourseCreated {
+                course_id: "some course".to_string(),
+                name: "some name".to_string(),
+                seats: 1,
+            },
+            SubscriptionEvent::StudentRegistered {
+                student_id: "some student".to_string(),
+                name: "some name".to_string(),
+            },
+            SubscriptionEvent::StudentSubscribed {
+                student_id: "another student".to_string(),
+                course_id: "some course".to_string(),
+            },
+        ])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
         .then_err(SubscriptionError::NoSeatsAvailable);
     }
 
     #[test]
     fn it_should_not_subscribe_a_student_that_is_already_subscribed() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [
-                SubscriptionEvent::CourseCreated {
-                    course_id: "some course".to_string(),
-                    name: "some name".to_string(),
-                    seats: 2,
-                },
-                SubscriptionEvent::StudentRegistered {
-                    student_id: "some student".to_string(),
-                    name: "some name".to_string(),
-                },
-                SubscriptionEvent::StudentSubscribed {
-                    student_id: "some student".to_string(),
-                    course_id: "some course".to_string(),
-                },
-            ],
-        )
-        .when(|s| s.subscribe())
+        disintegrate::TestHarness::given([
+            SubscriptionEvent::CourseCreated {
+                course_id: "some course".to_string(),
+                name: "some name".to_string(),
+                seats: 2,
+            },
+            SubscriptionEvent::StudentRegistered {
+                student_id: "some student".to_string(),
+                name: "some name".to_string(),
+            },
+            SubscriptionEvent::StudentSubscribed {
+                student_id: "some student".to_string(),
+                course_id: "some course".to_string(),
+            },
+        ])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
         .then_err(SubscriptionError::StudentAlreadySubscribed);
     }
 
     #[test]
     fn it_should_not_subscribe_a_student_that_attends_two_courses() {
-        disintegrate::TestHarness::given(
-            Subscription::new("some course".to_string(), "some student".to_string()),
-            [
-                SubscriptionEvent::CourseCreated {
-                    course_id: "some course".to_string(),
-                    name: "some name".to_string(),
-                    seats: 1,
-                },
-                SubscriptionEvent::StudentRegistered {
-                    student_id: "some student".to_string(),
-                    name: "some name".to_string(),
-                },
-                SubscriptionEvent::StudentSubscribed {
-                    student_id: "some student".to_string(),
-                    course_id: "another course".to_string(),
-                },
-                SubscriptionEvent::StudentSubscribed {
-                    student_id: "some student".to_string(),
-                    course_id: "yet another course".to_string(),
-                },
-            ],
-        )
-        .when(|s| s.subscribe())
+        disintegrate::TestHarness::given([
+            SubscriptionEvent::CourseCreated {
+                course_id: "some course".to_string(),
+                name: "some name".to_string(),
+                seats: 1,
+            },
+            SubscriptionEvent::StudentRegistered {
+                student_id: "some student".to_string(),
+                name: "some name".to_string(),
+            },
+            SubscriptionEvent::StudentSubscribed {
+                student_id: "some student".to_string(),
+                course_id: "another course".to_string(),
+            },
+            SubscriptionEvent::StudentSubscribed {
+                student_id: "some student".to_string(),
+                course_id: "yet another course".to_string(),
+            },
+        ])
+        .when(SubscribeStudent::new(
+            "some student".into(),
+            "some course".into(),
+        ))
         .then_err(SubscriptionError::StudentHasTooManyCourses);
     }
 }

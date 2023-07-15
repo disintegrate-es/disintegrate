@@ -1,62 +1,37 @@
 use super::Application;
 use crate::domain::{
-    Course, CourseId, DomainEvent, Student, StudentId, Subscription, Unsubscription,
+    CloseCourse, CreateCourse, DomainEvent, RegisterStudent, RenameCourse, SubscribeStudent,
+    UnsubscribeStudent,
 };
 use anyhow::Result;
+use disintegrate::EventStore;
 
-impl<S> Application<S>
+impl<ES> Application<ES>
 where
-    S: disintegrate::StateStore<DomainEvent>,
+    ES: EventStore<DomainEvent>,
+    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
 {
     pub async fn create_course(&self, command: CreateCourse) -> Result<()> {
         println!("create course id {}", command.course_id);
-        let course = self
-            .state_store
-            .hydrate(Course::new(command.course_id))
-            .await?;
-        let changes = course.create(&command.name, command.seats)?;
-
-        self.state_store.save(&course, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
 
     pub async fn close_course(&self, command: CloseCourse) -> Result<()> {
         println!("close course id {}", command.course_id);
-        let course = self
-            .state_store
-            .hydrate(Course::new(command.course_id))
-            .await?;
-        let changes = course.close()?;
-
-        self.state_store.save(&course, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
 
     pub async fn rename_course(&self, command: RenameCourse) -> Result<()> {
         println!("rename course id {}", command.course_id);
-        let course = self
-            .state_store
-            .hydrate(Course::new(command.course_id.clone()))
-            .await?;
-        let changes = course.rename(&command.name)?;
-
-        self.state_store.save(&course, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
 
     pub async fn register_student(&self, command: RegisterStudent) -> Result<()> {
         println!("register student id {}", command.student_id);
-        let student = self
-            .state_store
-            .hydrate(Student::new(command.student_id))
-            .await?;
-        let changes = student.register(&command.name)?;
-
-        self.state_store.save(&student, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
 
@@ -65,14 +40,7 @@ where
             "subscribe student id {} course id {}",
             command.student_id, command.course_id
         );
-        let subscription = self
-            .state_store
-            .hydrate(Subscription::new(command.course_id, command.student_id))
-            .await?;
-        let changes = subscription.subscribe()?;
-
-        self.state_store.save(&subscription, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
 
@@ -81,43 +49,7 @@ where
             "unsubscribe student id {} course id {}",
             command.student_id, command.course_id
         );
-        let unsubscription = self
-            .state_store
-            .hydrate(Unsubscription::new(command.course_id, command.student_id))
-            .await?;
-        let changes = unsubscription.unsubscribe()?;
-
-        self.state_store.save(&unsubscription, changes).await?;
-
+        self.decision_maker.make(command).await?;
         Ok(())
     }
-}
-
-pub struct CreateCourse {
-    pub course_id: CourseId,
-    pub name: String,
-    pub seats: u32,
-}
-
-pub struct CloseCourse {
-    pub course_id: CourseId,
-}
-
-pub struct RenameCourse {
-    pub course_id: CourseId,
-    pub name: String,
-}
-
-pub struct RegisterStudent {
-    pub student_id: StudentId,
-    pub name: String,
-}
-
-pub struct SubscribeStudent {
-    pub student_id: StudentId,
-    pub course_id: CourseId,
-}
-pub struct UnsubscribeStudent {
-    pub student_id: StudentId,
-    pub course_id: CourseId,
 }

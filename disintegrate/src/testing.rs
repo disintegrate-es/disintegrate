@@ -1,94 +1,96 @@
-//! Utility for testing a State implementation
+//! Utility for testing a Decision implementation
 //!
-//! The test harness allows you to set up the initial state and a history of events, perform actions on the state,
-//! and make assertions about the resulting state changes.
+//! The test harness allows you to set up a history of events, perform the given decision,
+//! and make assertions about the resulting changes.
 use std::fmt::Debug;
 
-use crate::state::State;
+use crate::{
+    decision::{Decision, State},
+    Event,
+};
 
-/// Test harness for testing code that depends on a state.
+/// Test harness for testing decisions.
 pub struct TestHarness;
 
 impl TestHarness {
-    /// Sets up the initial state and applies a history of events.
+    /// Sets up a history of events.
     ///
     /// # Arguments
     ///
-    /// * `state` - The initial state.
-    /// * `history` - A history of events to apply to the state.
+    /// * `history` - A history of events to derive the current state.
     ///
     /// # Returns
     ///
     /// A `TestHarnessStep` representing the "given" step.
-    pub fn given<S: State>(
-        mut state: S,
-        history: impl Into<Vec<S::Event>>,
-    ) -> TestHarnessStep<S, Given> {
-        for event in history.into() {
-            state.mutate(event);
-        }
+    pub fn given<E: Event + Clone>(history: impl Into<Vec<E>>) -> TestHarnessStep<E, Given> {
         TestHarnessStep {
-            state,
+            history: history.into(),
             _step: Given,
         }
     }
 }
 
-/// Represents the initial state setup step in the test harness.
+/// Represents the given step of the test harness.
 pub struct Given;
 
-/// Represents the action execution step in the test harness.
-pub struct When<R, E> {
-    result: Result<R, E>,
+/// Represents when step of the test harness.
+pub struct When<R, ERR> {
+    result: Result<Vec<R>, ERR>,
 }
 
-pub struct TestHarnessStep<S: State, ST> {
-    state: S,
+pub struct TestHarnessStep<E: Event + Clone, ST> {
+    history: Vec<E>,
     _step: ST,
 }
 
-impl<S: State> TestHarnessStep<S, Given> {
-    /// Executes an action on the current state.
+impl<E: Event + Clone> TestHarnessStep<E, Given> {
+    /// Executes a decision on the state derived from the given history.
     ///
     /// # Arguments
     ///
-    /// * `func` - The function representing the action to execute on the state.
+    /// * `decision` - The decision to test.
     ///
     /// # Returns
     ///
     /// A `TestHarnessStep` representing the "when" step.
-    pub fn when<F, R, E>(mut self, func: F) -> TestHarnessStep<S, When<R, E>>
+    pub fn when<D, S, R, ERR>(self, decision: D) -> TestHarnessStep<E, When<R, ERR>>
     where
-        F: FnOnce(&mut S) -> Result<R, E>,
+        D: Decision<Event = R, Error = ERR, State = S>,
+        S: State<Event = E>,
+        R: Event,
     {
-        let result = func(&mut self.state);
+        let mut state = decision.default_state();
+        for event in self.history.iter() {
+            state.mutate(event.clone());
+        }
+        let result = decision.process(&state);
         TestHarnessStep {
-            state: self.state,
+            history: self.history,
             _step: When { result },
         }
     }
 }
 
-impl<S, R, E> TestHarnessStep<S, When<R, E>>
+impl<R, E, ERR> TestHarnessStep<E, When<R, ERR>>
 where
-    S: State,
+    E: Event + Clone + PartialEq,
     R: Debug + PartialEq,
-    E: Debug + PartialEq,
+    ERR: Debug + PartialEq,
 {
-    /// Makes assertions about the state changes.
+    /// Makes assertions about the changes.
     ///
     /// # Arguments
     ///
-    /// * `expected` - The expected changes to the state.
+    /// * `expected` - The expected changes.
     ///
     /// # Panics
     ///
-    /// Panics if the action result is not `Ok` or if the state changes do not match the expected changes.
+    /// Panics if the action result is not `Ok` or if the changes do not match the expected changes.
     ///
     /// # Examples
-    pub fn then(self, expected: R) {
-        assert!(self._step.result.is_ok());
-        assert_eq!(expected, self._step.result.unwrap());
+    #[track_caller]
+    pub fn then(self, expected: impl Into<Vec<R>>) {
+        assert_eq!(Ok(expected.into()), self._step.result);
     }
 
     /// Makes assertions about the expected error result.
@@ -100,9 +102,10 @@ where
     /// # Panics
     ///
     /// Panics if the action result is not `Err` or if the error does not match the expected error.
-    pub fn then_err(self, expected: E) {
-        let Err(err) = self._step.result else { panic!("expected error {:?}", expected) };
-        assert!(err == expected);
+    #[track_caller]
+    pub fn then_err(self, expected: ERR) {
+        let err = self._step.result.unwrap_err();
+        assert_eq!(err, expected);
     }
 }
 
@@ -111,8 +114,8 @@ mod tests {
     use std::vec;
 
     use super::*;
+    use crate::decision::State;
     use crate::event::{Event, EventSchema};
-    use crate::state::State;
     use crate::stream_query::StreamQuery;
 
     #[derive(Clone, Debug, PartialEq)]
@@ -160,18 +163,42 @@ mod tests {
         }
     }
 
+    struct SampleDecision {
+        result: Result<Vec<SampleEvent>, &'static str>,
+    }
+
+    impl SampleDecision {
+        fn new(result: Result<Vec<SampleEvent>, &'static str>) -> Self {
+            Self { result }
+        }
+    }
+
+    impl Decision for SampleDecision {
+        type Event = SampleEvent;
+        type State = SampleState;
+        type Error = &'static str;
+
+        fn default_state(&self) -> Self::State {
+            SampleState::new()
+        }
+
+        fn process(&self, _state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+            self.result.clone()
+        }
+
+        fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+            None
+        }
+    }
+
     #[test]
     fn it_should_set_up_initial_state_and_apply_the_history() {
-        let history = vec![SampleEvent::Created("x".into())];
-
-        TestHarness::given(SampleState::new(), history)
-            .when(|_s| {
-                Ok::<Vec<SampleEvent>, String>(vec![
-                    SampleEvent::Created("x".into()),
-                    SampleEvent::Deleted("x".into()),
-                ])
-            })
-            .then(vec![
+        TestHarness::given(vec![SampleEvent::Created("x".into())])
+            .when(SampleDecision::new(Ok(vec![
+                SampleEvent::Created("x".into()),
+                SampleEvent::Deleted("x".into()),
+            ])))
+            .then([
                 SampleEvent::Created("x".into()),
                 SampleEvent::Deleted("x".into()),
             ]);
@@ -180,23 +207,26 @@ mod tests {
     #[test]
     #[should_panic]
     fn it_should_panic_when_action_failed_and_events_were_expected() {
-        TestHarness::given(SampleState::new(), [])
-            .when(|_| Err::<Vec<SampleEvent>, &'static str>("Some error"))
-            .then(vec![SampleEvent::Deleted("x".into())]);
+        TestHarness::given([])
+            .when(SampleDecision::new(Err("Some error")))
+            .then([SampleEvent::Deleted("x".into())]);
     }
 
     #[test]
     fn it_should_assert_expected_error_with_then_err() {
-        TestHarness::given(SampleState::new(), [])
-            .when(|_| Err::<(), &'static str>("Some error"))
+        TestHarness::given([])
+            .when(SampleDecision::new(Err("Some error")))
             .then_err("Some error");
     }
 
     #[test]
-    #[should_panic(expected = "expected error \"Some error\"")]
+    #[should_panic]
     fn it_should_panic_when_an_error_is_expected() {
-        TestHarness::given(SampleState::new(), [])
-            .when(|_| Ok::<(), &'static str>(()))
+        TestHarness::given(vec![SampleEvent::Created("x".into())])
+            .when(SampleDecision::new(Ok(vec![
+                SampleEvent::Created("x".into()),
+                SampleEvent::Deleted("x".into()),
+            ])))
             .then_err("Some error");
     }
 }

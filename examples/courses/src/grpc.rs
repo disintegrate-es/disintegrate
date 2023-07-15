@@ -1,32 +1,28 @@
 use async_trait::async_trait;
+use disintegrate::EventStore;
 
 use crate::{
-    application::{self, Application},
-    domain::DomainEvent,
+    application::Application,
+    domain::{self, DomainEvent},
     proto,
 };
 
 #[derive(Clone)]
-pub struct CourseApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    app: Application<R>,
+pub struct CourseApi<ES> {
+    app: Application<ES>,
 }
 
-impl<R> CourseApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    pub fn new(app: Application<R>) -> Self {
+impl<ES> CourseApi<ES> {
+    pub fn new(app: Application<ES>) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<R> proto::course_server::Course for CourseApi<R>
+impl<ES> proto::course_server::Course for CourseApi<ES>
 where
-    R: disintegrate::StateStore<DomainEvent> + Send + Sync + 'static,
+    ES: EventStore<DomainEvent> + Send + Sync + 'static,
+    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
 {
     async fn create(
         &self,
@@ -35,7 +31,7 @@ where
         let request = request.into_inner();
 
         self.app
-            .create_course(application::CreateCourse {
+            .create_course(domain::CreateCourse {
                 course_id: request.course_id,
                 name: request.name,
                 seats: request.seats,
@@ -51,7 +47,7 @@ where
     ) -> Result<tonic::Response<proto::CloseCourseResponse>, tonic::Status> {
         let request = request.into_inner();
         self.app
-            .close_course(application::CloseCourse {
+            .close_course(domain::CloseCourse {
                 course_id: request.course_id,
             })
             .await
@@ -66,7 +62,7 @@ where
         let request = request.into_inner();
 
         self.app
-            .rename_course(application::RenameCourse {
+            .rename_course(domain::RenameCourse {
                 course_id: request.course_id,
                 name: request.name,
             })
@@ -97,26 +93,21 @@ where
 }
 
 #[derive(Clone)]
-pub struct StudentApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    app: Application<R>,
+pub struct StudentApi<ES> {
+    app: Application<ES>,
 }
 
-impl<R> StudentApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    pub fn new(app: Application<R>) -> Self {
+impl<ES> StudentApi<ES> {
+    pub fn new(app: Application<ES>) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<R> proto::student_server::Student for StudentApi<R>
+impl<ES> proto::student_server::Student for StudentApi<ES>
 where
-    R: disintegrate::StateStore<DomainEvent> + Send + Sync + 'static,
+    ES: EventStore<DomainEvent> + Send + Sync + 'static,
+    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
 {
     async fn register(
         &self,
@@ -124,7 +115,7 @@ where
     ) -> Result<tonic::Response<proto::RegisterStudentResponse>, tonic::Status> {
         let request = request.into_inner();
         self.app
-            .register_student(application::RegisterStudent {
+            .register_student(domain::RegisterStudent {
                 student_id: request.student_id,
                 name: request.name,
             })
@@ -135,26 +126,21 @@ where
 }
 
 #[derive(Clone)]
-pub struct SubscriptionApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    app: Application<R>,
+pub struct SubscriptionApi<ES> {
+    app: Application<ES>,
 }
 
-impl<R> SubscriptionApi<R>
-where
-    R: disintegrate::StateStore<DomainEvent>,
-{
-    pub fn new(app: Application<R>) -> Self {
+impl<ES> SubscriptionApi<ES> {
+    pub fn new(app: Application<ES>) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<R> proto::subscription_server::Subscription for SubscriptionApi<R>
+impl<ES> proto::subscription_server::Subscription for SubscriptionApi<ES>
 where
-    R: disintegrate::StateStore<DomainEvent> + Send + Sync + 'static,
+    ES: EventStore<DomainEvent> + Send + Sync + 'static,
+    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
 {
     async fn subscribe(
         &self,
@@ -162,7 +148,7 @@ where
     ) -> Result<tonic::Response<proto::SubscribeStudentResponse>, tonic::Status> {
         let request = request.into_inner();
         self.app
-            .subscribe_student(application::SubscribeStudent {
+            .subscribe_student(domain::SubscribeStudent {
                 course_id: request.course_id,
                 student_id: request.student_id,
             })
@@ -176,7 +162,7 @@ where
     ) -> Result<tonic::Response<proto::UnsubscribeStudentResponse>, tonic::Status> {
         let request = request.into_inner();
         self.app
-            .unsubscribe_student(application::UnsubscribeStudent {
+            .unsubscribe_student(domain::UnsubscribeStudent {
                 course_id: request.course_id,
                 student_id: request.student_id,
             })

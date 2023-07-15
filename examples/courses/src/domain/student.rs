@@ -1,6 +1,6 @@
-use disintegrate::{State, StreamQuery};
+use disintegrate::{Decision, State, StreamQuery};
 
-use super::StudentEvent;
+use super::{DomainEvent, StudentEvent};
 
 pub type StudentId = String;
 
@@ -62,15 +62,56 @@ impl State for Student {
     }
 }
 
+pub struct RegisterStudent {
+    pub student_id: StudentId,
+    pub name: String,
+}
+
+impl RegisterStudent {
+    pub fn new(student_id: StudentId, name: String) -> Self {
+        Self { student_id, name }
+    }
+}
+
+impl Decision for RegisterStudent {
+    type Event = DomainEvent;
+
+    type State = Student;
+
+    type Error = StudentError;
+
+    fn default_state(&self) -> Self::State {
+        Student::new(self.student_id.clone())
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+        None
+    }
+
+    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+        if state.registered {
+            return Err(StudentError::AlreadyRegistered);
+        }
+        if self.name.is_empty() {
+            return Err(StudentError::NameEmpty);
+        }
+
+        Ok(vec![DomainEvent::StudentRegistered {
+            student_id: self.student_id.clone(),
+            name: self.name.clone(),
+        }])
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn it_register_a_new_student() {
-        disintegrate::TestHarness::given(Student::new("1".to_string()), [])
-            .when(|s| s.register("some name"))
-            .then(vec![StudentEvent::StudentRegistered {
+    fn it_registers_a_new_student() {
+        disintegrate::TestHarness::given([])
+            .when(RegisterStudent::new("1".into(), "some name".to_string()))
+            .then([DomainEvent::StudentRegistered {
                 student_id: "1".into(),
                 name: "some name".into(),
             }]);
@@ -78,14 +119,11 @@ mod test {
 
     #[test]
     fn it_should_not_register_a_student_when_it_already_exists() {
-        disintegrate::TestHarness::given(
-            Student::new("1".into()),
-            [StudentEvent::StudentRegistered {
-                student_id: "1".into(),
-                name: "some name".into(),
-            }],
-        )
-        .when(|s| s.register("some name"))
+        disintegrate::TestHarness::given([StudentEvent::StudentRegistered {
+            student_id: "1".into(),
+            name: "some name".into(),
+        }])
+        .when(RegisterStudent::new("1".into(), "some name".to_string()))
         .then_err(StudentError::AlreadyRegistered);
     }
 }

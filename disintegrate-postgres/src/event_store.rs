@@ -10,6 +10,7 @@ mod tests;
 use insert_builder::InsertBuilder;
 use query_builder::QueryBuilder;
 use sqlx::Row;
+use std::error::Error as StdError;
 
 use std::marker::PhantomData;
 
@@ -20,7 +21,8 @@ use disintegrate::stream_query::StreamQuery;
 use disintegrate::EventStore;
 use disintegrate::{Event, PersistedEvent};
 use disintegrate_serde::Serde;
-use futures::{stream::BoxStream, StreamExt};
+use futures::stream::BoxStream;
+use futures::StreamExt;
 use sqlx::PgPool;
 
 /// PostgreSQL event store implementation.
@@ -86,24 +88,25 @@ where
     fn stream<'a, QE>(
         &'a self,
         query: &'a StreamQuery<QE>,
-    ) -> Result<BoxStream<PersistedEvent<QE>>, Self::Error>
+    ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + Send + Sync + Clone,
-        <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
+        <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
-        Ok(stream! {
+        stream! {
             let mut sql = QueryBuilder::new(query, "SELECT event_id, payload FROM event WHERE ")
             .end_with("ORDER BY event_id ASC");
 
             for await row in sql.build()
             .fetch(&self.pool) {
-                let row = row.unwrap();
+                let row = row?;
                 let id = row.get(0);
-                let payload = self.serde.deserialize(row.get(1)).unwrap();
-                yield PersistedEvent::new(id, payload.try_into().unwrap());
+
+                let payload = self.serde.deserialize(row.get(1))?;
+                yield Ok(PersistedEvent::new(id, payload.try_into().map_err(|e| Error::QueryEventMapping(Box::new(e)))?));
             }
         }
-        .boxed())
+        .boxed()
     }
 
     /// Appends new events to the event store.

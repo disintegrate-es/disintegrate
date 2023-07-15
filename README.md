@@ -24,16 +24,16 @@ To add Disintegrate to your project, follow these steps:
 
     ```toml
     [dependencies]
-    disintegrate = "0.4.0"
-    disintegrate-postgres = "0.4.0"
+    disintegrate = "0.5.0"
+    disintegrate-postgres = "0.5.0"
     ```
 
     * Disintegrate provides several features that you can enable based on your project requirements. You can include them in your `Cargo.toml` file as follows:
 
     ```toml
     [dependencies]
-    disintegrate = { version = "0.4.0", features = ["macros", "serde-prost"] }
-    disintegrate-postgres = { version = "0.4.0", features = ["listener"] }
+    disintegrate = { version = "0.5.0", features = ["macros", "serde-prost"] }
+    disintegrate-postgres = { version = "0.5.0", features = ["listener"] }
     ```
 
     * The macros feature enables the use of derive macros to simplify events implementations.
@@ -45,7 +45,7 @@ To add Disintegrate to your project, follow these steps:
         * To enable Prost serialization, use the `serde-prost` feature: `features = ["serde-prost"]`.
         * To enable Protocol Buffers serialization, use the `serde-protobuf` feature: `features = ["serde-protobuf"]`.
 
-    * If you're using the PostgreSQL event store backend and want to use the listener mechanism, you can enable the `listener` feature: `disintegrate-postgres = {version = "0.2.0", features = ["-listener"]`}.
+    * If you're using the PostgreSQL event store backend and want to use the listener mechanism, you can enable the `listener` feature: `disintegrate-postgres = {version = "0.5.0", features = ["listener"]}`.
 
 2. Define the list of events in your application. You can use the Event Storming technique to identify the events that occur in your system. Here's an example of defining events using Disintegrate:
 
@@ -141,12 +141,6 @@ To add Disintegrate to your project, follow these steps:
         }
     }
 
-    #[derive(Debug, Error)]
-    pub enum CartError {
-        // cart errors
-    }
-
-    /// Implement your business logic using the state
     impl Cart {
         pub fn new(user_id: &str) -> Self {
             Self {
@@ -154,31 +148,73 @@ To add Disintegrate to your project, follow these steps:
                 items: HashSet::new(),
             }
         }
-
-        pub fn add_item(&self, item_id: &str, quantity: u32) -> Result<Vec<CartEvent>, CartError> {
-            // check your business constraints...
-            Ok(vec![CartEvent::ItemAdded {
-                user_id: self.user_id.clone(),
-                item_id: item_id.to_string(),
-                quantity,
-            }])
-        }
     }
     ```
 
     In this example, we define a `Cart` struct that implements the `State` trait. The `Cart` struct represents the state of a shopping cart and keeps track of the items added by users. 
 
-4. Instantiate an event store, hydrate the `Cart` state, and invoke `add_item` method:
+4. Create a struct that implements the `Decision` trait. This struct represents a business decision and is responsible for validating inputs and generating a list of changes. The resulting changes will be stored by the `DecisionMaker` in the event store:
+    ```rust,ignore
+    #[derive(Debug, Error)]
+    pub enum CartError {
+        // cart errors
+    }
+
+    pub struct AddItem {
+        user_id: String,
+        item_id: String,
+        quantity: u32,
+    }
+
+    impl AddItem {
+        pub fn new(user_id: String, item_id: String, quantity: u32) -> Self {
+            Self {
+                user_id,
+                item_id,
+                quantity,
+            }
+        }
+    }
+
+    /// Implement your business logic
+    impl Decision for AddItem {
+        type Event = CartEvent;
+        type State = Cart;
+        type Error = CartError;
+
+        fn default_state(&self) -> Self::State {
+            Cart::new(&self.user_id)
+        }
+
+        fn validation_query(&self) -> Option<StreamQuery<CartEvent>> {
+            None
+        }
+
+        fn process(&self, _state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+            // check your business constraints...
+            Ok(vec![CartEvent::ItemAdded {
+                user_id: self.user_id.clone(),
+                item_id: self.item_id.to_string(),
+                quantity: self.quantity,
+            }])
+        }
+    }
+    ```
+    In the provided examples, decisions are used as commands that are executed against a state built from the event store. A `Decision` defines the default `State`, which will be mutated using the events contained in the event store.
+
+    In cases where no events are found in the event store, the default `State` is used as a starting point to make the decision. This scenario arises when the decision is taken for the first time, and there is no historical data available to build a `State`.
+
+5. Instantiate an event store, create the `AddItem` decision, and invoke `make` method on `DecisionMaker`:
 
     ```rust,ignore
     mod cart;
     mod event;
 
-    use cart::Cart;
+    use cart::AddItem;
     use event::DomainEvent;
 
     use anyhow::{Ok, Result};
-    use disintegrate::{serde::json::Json, StateStore};
+    use disintegrate::{serde::json::Json, DecisionMaker};
     use disintegrate_postgres::PgEventStore;
     use sqlx::{postgres::PgConnectOptions, PgPool};
 
@@ -196,15 +232,14 @@ To add Disintegrate to your project, follow these steps:
         // Create a PostgreSQL event store
         let event_store = PgEventStore::new(pool, serde).await?;
 
-        // Hydrate the `Cart` from the event store
-        let user_id = "user-1";
-        let cart = event_store.hydrate(Cart::new(user_id)).await?;
+        // Create a DecisionMaker 
+        let decision_maker = DecisionMaker::new(event_store);
 
-        // Invoke add item method on the hydrated cart
-        let changes = cart.add_item("item-1", 4)?;
-
-        // Save the changes 
-        event_store.save(&cart, changes).await?;
+        // Make the decision. This performs the business decision and persists 
+        // the changes into the event store
+        decision_maker
+            .make(AddItem::new("user-1".to_string(), "item-1".to_string(), 4))
+            .await?;
         Ok(())
     }
     ```
@@ -226,3 +261,13 @@ We appreciate your help in making Disintegrate better!
 ## Acknowledgments
 
 Disintegrate is inspired by the ideas presented in the talk [Kill Aggregate!](https://www.youtube.com/watch?v=DhhxKoOpJe0) by Sara Pellegrini, exploring new possibilities for modeling business concepts from event streams. We would like to express our gratitude to the speaker for sharing their insights and sparking innovative thinking within the software development community.
+
+While preserving the core concepts from the video, Disintegrate introduces additional features that enrich the developer experience and bring the ideas into practical implementation:
+
+1. **Postgres implementation**: Disintegrate provides a working implementation of the concepts discussed in the video.
+
+2. **Powerful query system**: In the video, queries were constructed using a list of domain identifiers and event types. Disintegrate takes this capability to the next level by empowering developers to create more sophisticated queries that can address advanced use cases.
+
+3. **Validation queries**: While acknowledging the value of the video's approach in utilizing a query to validate the state's integrity, Disintegrate takes it a step further to enhance this aspect. In the video, the same query was used for both building the state and the append API. However, Disintegrate introduces a powerful feature known as `Validation` queries, which empowers developers with fine-grained control over decision invalidation when new events are stored in the event store. This proves particularly useful in scenarios such as the banking example. For example, when making a withdrawal decision, the account balance needs to be computed, requiring the inclusion of deposit events in the state. However, a deposit event should not invalidate a withdrawal decision, even if it changes the state. In such cases, validation must be performed on a subset of events necessary for building the state.
+
+4. **Decision concept**: Disintegrate introduces the concept of `Decision`, which serve as building block for developing application business logic while adhering to the SOLID principles. A `Decision` can be seen as small aggregate that focus on specific use case. Consequently, when a new use case emerges, it is possible to extend the application by adding a new `Decision` without modifying existing ones.
