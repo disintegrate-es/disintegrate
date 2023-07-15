@@ -14,6 +14,7 @@ use crate::{
 
 use async_trait::async_trait;
 use futures::stream::BoxStream;
+use std::error::Error as StdError;
 
 /// A trait representing an event store.
 ///
@@ -23,7 +24,7 @@ pub trait EventStore<E>
 where
     E: Event + Send + Sync,
 {
-    type Error;
+    type Error: Send + Sync;
 
     // Streams events based on the provided query.
     ///
@@ -37,10 +38,10 @@ where
     fn stream<'a, QE>(
         &'a self,
         query: &'a StreamQuery<QE>,
-    ) -> Result<BoxStream<PersistedEvent<QE>>, Self::Error>
+    ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
     where
-        QE: TryFrom<E> + Event + Clone + Send + Sync,
-        <QE as TryFrom<E>>::Error: std::fmt::Debug + Send;
+        QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
+        <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync;
 
     /// Appends a batch of events to the event store.
     ///
@@ -67,5 +68,5 @@ where
     ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
     where
         E: Clone + 'async_trait,
-        QE: Event + Clone + Send + Sync;
+        QE: Event + 'static + Clone + Send + Sync;
 }

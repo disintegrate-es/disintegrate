@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 #[cfg(feature = "avro")]
 pub mod avro;
 #[cfg(feature = "json")]
@@ -8,6 +6,17 @@ pub mod json;
 pub mod prost;
 #[cfg(feature = "protobuf")]
 pub mod protobuf;
+
+/// Serialization and deserialization error.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// an error occurred during the deserialization of the data
+    #[error("deserialization error: {0}")]
+    Deserialization(#[source] Box<dyn std::error::Error + Sync + Send>),
+    /// an error occurred while converting the persisted data to the application data
+    #[error("conversion error")]
+    Conversion,
+}
 
 /// The `Serializer` trait defines the behavior for serializing values of type `T`.
 pub trait Serializer<T> {
@@ -25,9 +34,6 @@ pub trait Serializer<T> {
 
 /// The `Deserializer` trait defines the behavior for deserializing values of type `T`.
 pub trait Deserializer<T> {
-    /// The error type that can occur during deserialization.
-    type Error: Debug;
-
     /// Deserializes a byte vector into a value of type `T`.
     ///
     /// # Arguments
@@ -37,19 +43,7 @@ pub trait Deserializer<T> {
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(&self, data: Vec<u8>) -> Result<T, Self::Error>;
-}
-
-impl<T, Err, F> Deserializer<T> for F
-where
-    F: Fn(Vec<u8>) -> Result<T, Err>,
-    Err: Debug,
-{
-    type Error = Err;
-
-    fn deserialize(&self, data: Vec<u8>) -> Result<T, Self::Error> {
-        self(data)
-    }
+    fn deserialize(&self, data: Vec<u8>) -> Result<T, Error>;
 }
 
 /// The `Serde` trait combines the `Serializer` and `Deserializer` traits for convenience.

@@ -2,8 +2,8 @@ use std::marker::PhantomData;
 
 use prost::{bytes::Bytes, Message};
 
+use super::Error;
 use crate::serde::{Deserializer, Serializer};
-use thiserror::Error;
 
 /// A serialization and deserialization module using Prost.
 ///
@@ -51,22 +51,11 @@ where
     }
 }
 
-/// An error that occurs during decoding of encoded data.
-#[derive(Debug, Error)]
-pub enum DecodeError {
-    #[error("deserialization error")]
-    Deserialize(#[from] prost::DecodeError),
-    #[error("failed to convert data to the target type")]
-    Conversion,
-}
-
 impl<I, O> Deserializer<I> for Prost<I, O>
 where
     I: TryFrom<O>,
     O: Message + Default,
 {
-    type Error = DecodeError;
-
     /// Deserializes the given Protobuf-encoded bytes to produce a value of type `I`.
     ///
     /// # Arguments
@@ -76,11 +65,11 @@ where
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(&self, data: Vec<u8>) -> Result<I, Self::Error> {
+    fn deserialize(&self, data: Vec<u8>) -> Result<I, Error> {
         let buf = Bytes::from(data);
 
-        let target = O::decode(buf)?;
-        I::try_from(target).map_err(|_| DecodeError::Conversion)
+        let target = O::decode(buf).map_err(|e| Error::Deserialization(Box::new(e)))?;
+        I::try_from(target).map_err(|_| Error::Conversion)
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::event::CartEvent;
-use disintegrate::{query, State, StreamQuery};
+use disintegrate::{query, Decision, State, StreamQuery};
 use std::collections::HashSet;
 use thiserror::Error;
 
@@ -19,6 +19,15 @@ impl Item {
 pub struct Cart {
     user_id: String,
     items: HashSet<Item>,
+}
+
+impl Cart {
+    pub fn new(user_id: &str) -> Self {
+        Self {
+            user_id: user_id.into(),
+            ..Default::default()
+        }
+    }
 }
 
 impl State for Cart {
@@ -54,21 +63,42 @@ pub enum CartError {
     // cart errors
 }
 
-/// Implement your business logic using the state
-impl Cart {
-    pub fn new(user_id: &str) -> Self {
+pub struct AddItem {
+    user_id: String,
+    item_id: String,
+    quantity: u32,
+}
+
+impl AddItem {
+    pub fn new(user_id: String, item_id: String, quantity: u32) -> Self {
         Self {
-            user_id: user_id.into(),
-            items: HashSet::new(),
+            user_id,
+            item_id,
+            quantity,
         }
     }
+}
 
-    pub fn add_item(&self, item_id: &str, quantity: u32) -> Result<Vec<CartEvent>, CartError> {
+/// Implement your business logic
+impl Decision for AddItem {
+    type Event = CartEvent;
+    type State = Cart;
+    type Error = CartError;
+
+    fn default_state(&self) -> Self::State {
+        Cart::new(&self.user_id)
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<CartEvent>> {
+        None
+    }
+
+    fn process(&self, _state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
         // check your business constraints...
         Ok(vec![CartEvent::ItemAdded {
             user_id: self.user_id.clone(),
-            item_id: item_id.to_string(),
-            quantity,
+            item_id: self.item_id.to_string(),
+            quantity: self.quantity,
         }])
     }
 }

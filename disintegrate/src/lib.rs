@@ -1,19 +1,19 @@
+pub mod decision;
 pub mod domain_identifier;
 mod event;
 mod event_store;
 pub mod identifier;
 mod listener;
-pub mod state;
 pub mod stream_query;
 mod testing;
 pub mod utils;
 
+pub use crate::decision::{Decision, DecisionMaker, State};
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
 pub use crate::event::{Event, EventSchema, PersistedEvent};
 pub use crate::event_store::EventStore;
 pub use crate::identifier::Identifier;
 pub use crate::listener::EventListener;
-pub use crate::state::{State, StateStore};
 pub use crate::stream_query::{query, StreamQuery};
 pub use crate::testing::TestHarness;
 

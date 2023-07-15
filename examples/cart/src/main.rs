@@ -1,11 +1,11 @@
 mod cart;
 mod event;
 
-use cart::Cart;
+use cart::AddItem;
 use event::DomainEvent;
 
 use anyhow::{Ok, Result};
-use disintegrate::{serde::json::Json, StateStore};
+use disintegrate::{serde::json::Json, DecisionMaker};
 use disintegrate_postgres::PgEventStore;
 use sqlx::{postgres::PgConnectOptions, PgPool};
 
@@ -23,14 +23,13 @@ async fn main() -> Result<()> {
     // Create a PostgreSQL event store
     let event_store = PgEventStore::new(pool, serde).await?;
 
-    // Hydrate the `Cart` from the event store
-    let user_id = "user-1";
-    let cart = event_store.hydrate(Cart::new(user_id)).await?;
+    // Create a DecisionMaker
+    let decision_maker = DecisionMaker::new(event_store);
 
-    // Invoke add item method on the hydrated cart
-    let changes = cart.add_item("item-1", 4)?;
-
-    // Save the new state
-    event_store.save(&cart, changes).await?;
+    // Make the decision. This performs the business decision and persists the changes into the
+    // event store
+    decision_maker
+        .make(AddItem::new("user-1".to_string(), "item-1".to_string(), 4))
+        .await?;
     Ok(())
 }

@@ -1,9 +1,9 @@
 /// A module for serializing and deserializing data using Avro schema.
 use std::marker::PhantomData;
 
+use super::Error;
 use apache_avro::{from_value, Codec, Reader, Schema, Writer};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::serde::{Deserializer, Serializer};
 
@@ -58,22 +58,11 @@ where
     }
 }
 
-/// An Avro serialization and deserialization error.
-#[derive(Debug, Error)]
-pub enum DecodeError {
-    #[error("deserialization error")]
-    Deserialize(#[from] apache_avro::Error),
-    #[error("failed to convert data to the target type")]
-    Conversion,
-}
-
 impl<I, O> Deserializer<I> for Avro<I, O>
 where
     I: TryFrom<O>,
     for<'d> O: Deserialize<'d>,
 {
-    type Error = DecodeError;
-
     /// Deserialize the given Avro serialized bytes to produce a value of type `I`.
     ///
     /// # Arguments
@@ -83,13 +72,14 @@ where
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(&self, data: Vec<u8>) -> Result<I, Self::Error> {
-        let mut reader = Reader::new(&data[..])?;
+    fn deserialize(&self, data: Vec<u8>) -> Result<I, Error> {
+        let mut reader = Reader::new(&data[..]).map_err(|e| Error::Deserialization(Box::new(e)))?;
         let value = reader
             .next()
-            .expect("at least one value should be present")?;
-        let target: O = from_value(&value)?;
-        I::try_from(target).map_err(|_| DecodeError::Conversion)
+            .expect("at least one value should be present")
+            .map_err(|e| Error::Deserialization(Box::new(e)))?;
+        let target: O = from_value(&value).map_err(|e| Error::Deserialization(Box::new(e)))?;
+        I::try_from(target).map_err(|_| Error::Conversion)
     }
 }
 

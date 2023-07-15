@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
+use super::Error;
 use crate::serde::{Deserializer, Serializer};
 
 /// A JSON serialization and deserialization module.
@@ -36,7 +37,6 @@ impl<T> Deserializer<T> for Json<T>
 where
     for<'d> T: Deserialize<'d>,
 {
-    type Error = serde_json::Error;
     /// Deserializes the given JSON bytes to produce a value of type `T`.
     ///
     /// # Arguments
@@ -46,8 +46,8 @@ where
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(&self, data: Vec<u8>) -> Result<T, Self::Error> {
-        serde_json::from_slice(&data)
+    fn deserialize(&self, data: Vec<u8>) -> Result<T, Error> {
+        serde_json::from_slice(&data).map_err(|e| Error::Deserialization(Box::new(e)))
     }
 }
 

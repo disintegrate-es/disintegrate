@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
+use super::Error;
 use protobuf::Message;
-use thiserror::Error;
 
 use crate::serde::{Deserializer, Serializer};
 
@@ -45,21 +45,11 @@ where
     }
 }
 
-#[derive(Debug, Error)]
-pub enum DecodeError {
-    #[error("deserialization error")]
-    Deserialize(#[from] protobuf::Error),
-    #[error("failed to convert data to the target type")]
-    Conversion,
-}
-
 impl<I, O> Deserializer<I> for Protobuf<I, O>
 where
     I: TryFrom<O>,
     O: Message,
 {
-    type Error = DecodeError;
-
     /// Deserializes the given byte vector to a target type.
     ///
     /// # Arguments
@@ -69,8 +59,8 @@ where
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(&self, data: Vec<u8>) -> Result<I, Self::Error> {
-        let target = O::parse_from_bytes(&data)?;
-        I::try_from(target).map_err(|_| DecodeError::Conversion)
+    fn deserialize(&self, data: Vec<u8>) -> Result<I, Error> {
+        let target = O::parse_from_bytes(&data).map_err(|e| Error::Deserialization(Box::new(e)))?;
+        I::try_from(target).map_err(|_| Error::Conversion)
     }
 }

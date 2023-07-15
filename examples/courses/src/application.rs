@@ -1,28 +1,22 @@
 mod commands;
 mod queries;
 
-use crate::domain::DomainEvent;
-use crate::read_model;
-pub use commands::{
-    CloseCourse, CreateCourse, RegisterStudent, RenameCourse, SubscribeStudent, UnsubscribeStudent,
-};
+use crate::{domain::DomainEvent, read_model};
+use disintegrate::{DecisionMaker, EventStore};
 
 #[derive(Clone)]
-pub struct Application<S>
-where
-    S: disintegrate::StateStore<DomainEvent>,
-{
-    state_store: S,
+pub struct Application<ES> {
+    decision_maker: DecisionMaker<ES>,
     read_model: read_model::Repository,
 }
 
-impl<S> Application<S>
+impl<ES> Application<ES>
 where
-    S: disintegrate::StateStore<DomainEvent>,
+    ES: EventStore<DomainEvent>,
 {
-    pub fn new(state_store: S, read_model: read_model::Repository) -> Self {
+    pub fn new(event_store: ES, read_model: read_model::Repository) -> Self {
         Self {
-            state_store,
+            decision_maker: DecisionMaker::new(event_store),
             read_model,
         }
     }

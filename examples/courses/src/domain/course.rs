@@ -1,6 +1,6 @@
-use disintegrate::{State, StreamQuery};
+use disintegrate::{Decision, State, StreamQuery};
 
-use super::CourseEvent;
+use super::{CourseEvent, DomainEvent};
 
 pub type CourseId = String;
 
@@ -22,7 +22,6 @@ pub enum CourseError {
 pub struct Course {
     course_id: CourseId,
     name: String,
-    seats: u32,
     created: bool,
     closed: bool,
 }
@@ -32,55 +31,9 @@ impl Course {
         Self {
             course_id,
             name: "".to_string(),
-            seats: 0,
             created: false,
             closed: false,
         }
-    }
-
-    pub fn create(&self, name: &str, seats: u32) -> Result<Vec<CourseEvent>, CourseError> {
-        if self.created {
-            return Err(CourseError::AlreadyCreated);
-        }
-
-        if name.is_empty() {
-            return Err(CourseError::NameEmpty);
-        }
-
-        Ok(vec![CourseEvent::CourseCreated {
-            course_id: self.course_id.clone(),
-            name: name.to_string(),
-            seats,
-        }])
-    }
-
-    pub fn rename(&self, name: &str) -> Result<Vec<CourseEvent>, CourseError> {
-        if !self.created {
-            return Err(CourseError::NotFound);
-        }
-
-        if name.is_empty() {
-            return Err(CourseError::NameEmpty);
-        }
-
-        Ok(vec![CourseEvent::CourseRenamed {
-            course_id: self.course_id.clone(),
-            name: name.to_string(),
-        }])
-    }
-
-    pub fn close(&self) -> Result<Vec<CourseEvent>, CourseError> {
-        if !self.created {
-            return Err(CourseError::NotFound);
-        }
-
-        if self.closed {
-            return Err(CourseError::AlreadyClosed);
-        }
-
-        Ok(vec![CourseEvent::CourseClosed {
-            course_id: self.course_id.clone(),
-        }])
     }
 }
 
@@ -93,9 +46,8 @@ impl State for Course {
 
     fn mutate(&mut self, event: Self::Event) {
         match event {
-            CourseEvent::CourseCreated { seats, name, .. } => {
+            CourseEvent::CourseCreated { name, .. } => {
                 self.name = name;
-                self.seats = seats;
                 self.created = true;
             }
             CourseEvent::CourseClosed { .. } => {
@@ -108,15 +60,146 @@ impl State for Course {
     }
 }
 
+pub struct CreateCourse {
+    pub course_id: CourseId,
+    pub name: String,
+    pub seats: u32,
+}
+
+impl CreateCourse {
+    pub fn new(course_id: CourseId, name: &str, seats: u32) -> Self {
+        Self {
+            course_id,
+            name: name.into(),
+            seats,
+        }
+    }
+}
+
+impl Decision for CreateCourse {
+    type Event = DomainEvent;
+
+    type State = Course;
+
+    type Error = CourseError;
+
+    fn default_state(&self) -> Self::State {
+        Course::new(self.course_id.clone())
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+        None
+    }
+
+    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+        if state.created {
+            return Err(CourseError::AlreadyCreated);
+        }
+
+        if self.name.is_empty() {
+            return Err(CourseError::NameEmpty);
+        }
+
+        Ok(vec![DomainEvent::CourseCreated {
+            course_id: self.course_id.clone(),
+            name: self.name.clone(),
+            seats: self.seats,
+        }])
+    }
+}
+
+pub struct CloseCourse {
+    pub course_id: CourseId,
+}
+
+impl CloseCourse {
+    pub fn new(course_id: CourseId) -> Self {
+        Self { course_id }
+    }
+}
+impl Decision for CloseCourse {
+    type Event = DomainEvent;
+
+    type State = Course;
+
+    type Error = CourseError;
+
+    fn default_state(&self) -> Self::State {
+        Course::new(self.course_id.clone())
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+        None
+    }
+
+    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+        if !state.created {
+            return Err(CourseError::NotFound);
+        }
+
+        if state.closed {
+            return Err(CourseError::AlreadyClosed);
+        }
+
+        Ok(vec![DomainEvent::CourseClosed {
+            course_id: self.course_id.clone(),
+        }])
+    }
+}
+
+pub struct RenameCourse {
+    pub course_id: CourseId,
+    pub name: String,
+}
+
+impl RenameCourse {
+    pub fn new(course_id: CourseId, name: &str) -> Self {
+        Self {
+            course_id,
+            name: name.into(),
+        }
+    }
+}
+impl Decision for RenameCourse {
+    type Event = DomainEvent;
+
+    type State = Course;
+
+    type Error = CourseError;
+
+    fn default_state(&self) -> Self::State {
+        Course::new(self.course_id.clone())
+    }
+
+    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
+        None
+    }
+
+    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+        if !state.created {
+            return Err(CourseError::NotFound);
+        }
+
+        if self.name.is_empty() {
+            return Err(CourseError::NameEmpty);
+        }
+
+        Ok(vec![DomainEvent::CourseRenamed {
+            course_id: self.course_id.clone(),
+            name: self.name.to_string(),
+        }])
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn it_creates_a_new_course() {
-        disintegrate::TestHarness::given(Course::new("1".to_string()), [])
-            .when(|s| s.create("test course", 1))
-            .then(vec![CourseEvent::CourseCreated {
+        disintegrate::TestHarness::given([])
+            .when(CreateCourse::new("1".into(), "test course", 1))
+            .then([DomainEvent::CourseCreated {
                 course_id: "1".into(),
                 name: "test course".into(),
                 seats: 1,
@@ -125,37 +208,31 @@ mod test {
 
     #[test]
     fn it_should_not_create_a_course_when_it_already_exists() {
-        disintegrate::TestHarness::given(
-            Course::new("1".into()),
-            [CourseEvent::CourseCreated {
-                course_id: "1".into(),
-                name: "test course".into(),
-                seats: 3,
-            }],
-        )
-        .when(|s| s.create("test course", 1))
+        disintegrate::TestHarness::given([CourseEvent::CourseCreated {
+            course_id: "1".into(),
+            name: "test course".into(),
+            seats: 3,
+        }])
+        .when(CreateCourse::new("1".into(), "some course".into(), 1))
         .then_err(CourseError::AlreadyCreated);
     }
 
     #[test]
     fn it_should_not_create_a_course_when_the_provided_name_is_empty() {
-        disintegrate::TestHarness::given(Course::new("1".into()), [])
-            .when(|s| s.rename("new name"))
+        disintegrate::TestHarness::given([])
+            .when(RenameCourse::new("1".into(), "new name"))
             .then_err(CourseError::NotFound);
     }
 
     #[test]
-    fn it_should_rename_a_course() {
-        disintegrate::TestHarness::given(
-            Course::new("1".into()),
-            [CourseEvent::CourseCreated {
-                course_id: "1".into(),
-                name: "old name".into(),
-                seats: 1,
-            }],
-        )
-        .when(|s| s.rename("new name"))
-        .then(vec![CourseEvent::CourseRenamed {
+    fn it_renames_a_course() {
+        disintegrate::TestHarness::given([CourseEvent::CourseCreated {
+            course_id: "1".into(),
+            name: "old name".into(),
+            seats: 1,
+        }])
+        .when(RenameCourse::new("1".into(), "new name"))
+        .then(vec![DomainEvent::CourseRenamed {
             course_id: "1".into(),
             name: "new name".into(),
         }]);
@@ -163,64 +240,55 @@ mod test {
 
     #[test]
     fn it_should_not_rename_a_course_when_it_does_not_exist() {
-        disintegrate::TestHarness::given(Course::new("1".into()), [])
-            .when(|s| s.create("", 1))
-            .then_err(CourseError::NameEmpty);
+        disintegrate::TestHarness::given([])
+            .when(RenameCourse::new("1".into(), "new name"))
+            .then_err(CourseError::NotFound);
     }
 
     #[test]
     fn it_should_not_rename_a_course_when_the_new_name_is_empty() {
-        disintegrate::TestHarness::given(
-            Course::new("1".into()),
-            [CourseEvent::CourseCreated {
-                course_id: "1".into(),
-                name: "old name".into(),
-                seats: 1,
-            }],
-        )
-        .when(|s| s.rename(""))
+        disintegrate::TestHarness::given([CourseEvent::CourseCreated {
+            course_id: "1".into(),
+            name: "old name".into(),
+            seats: 1,
+        }])
+        .when(RenameCourse::new("1".into(), ""))
         .then_err(CourseError::NameEmpty);
     }
 
     #[test]
-    fn it_should_close_a_course() {
-        disintegrate::TestHarness::given(
-            Course::new("1".into()),
-            [CourseEvent::CourseCreated {
-                course_id: "1".into(),
-                name: "old name".into(),
-                seats: 1,
-            }],
-        )
-        .when(|s| s.close())
-        .then(vec![CourseEvent::CourseClosed {
+    fn it_closes_a_course() {
+        disintegrate::TestHarness::given([CourseEvent::CourseCreated {
+            course_id: "1".into(),
+            name: "old name".into(),
+            seats: 1,
+        }])
+        .when(CloseCourse::new("1".into()))
+        .then(vec![DomainEvent::CourseClosed {
             course_id: "1".into(),
         }])
     }
 
     #[test]
     fn it_should_not_close_a_course_when_it_does_not_exist() {
-        disintegrate::TestHarness::given(Course::new("1".into()), [])
-            .when(|s| s.close())
+        disintegrate::TestHarness::given([])
+            .when(CloseCourse::new("1".into()))
             .then_err(CourseError::NotFound)
     }
 
     #[test]
     fn it_should_not_close_a_course_when_it_is_already_closed() {
-        disintegrate::TestHarness::given(
-            Course::new("1".into()),
-            [
-                CourseEvent::CourseCreated {
-                    course_id: "1".into(),
-                    name: "old name".into(),
-                    seats: 1,
-                },
-                CourseEvent::CourseClosed {
-                    course_id: "1".into(),
-                },
-            ],
-        )
-        .when(|s| s.close())
+        disintegrate::TestHarness::given([
+            CourseEvent::CourseCreated {
+                course_id: "1".into(),
+                name: "old name".into(),
+                seats: 1,
+            },
+            CourseEvent::CourseClosed {
+                course_id: "1".into(),
+            },
+        ])
+        .when(CloseCourse::new("1".into()))
         .then_err(CourseError::AlreadyClosed)
     }
 }

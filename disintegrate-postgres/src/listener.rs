@@ -14,6 +14,7 @@ use disintegrate_serde::Serde;
 use futures::future::join_all;
 use futures::{try_join, Future, StreamExt};
 use sqlx::{PgPool, Postgres, Row, Transaction};
+use std::error::Error as StdError;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
@@ -71,7 +72,7 @@ where
     ) -> Self
     where
         QE: TryFrom<E> + Event + Send + Sync + Clone + 'static,
-        <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
+        <QE as TryFrom<E>>::Error: StdError + Send + Sync,
     {
         self.executors.push(Arc::new(PgEventListerExecutor::new(
             self.event_store.clone(),
@@ -133,9 +134,8 @@ where
 }
 
 #[derive(Debug)]
-pub enum PgEventListenerError {
-    Failed { last_processed_event_id: i64 },
-    Query,
+pub struct PgEventListenerError {
+    last_processed_event_id: i64,
 }
 
 /// PostgreSQL listener Configuration
@@ -213,7 +213,7 @@ trait EventListenerExecutor {
 struct PgEventListerExecutor<L, QE, E, S>
 where
     QE: TryFrom<E> + Event + Send + Sync + Clone,
-    <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
+    <QE as TryFrom<E>>::Error: Send + Sync,
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
     L: EventListener<QE>,
@@ -229,8 +229,8 @@ impl<L, QE, E, S> PgEventListerExecutor<L, QE, E, S>
 where
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
-    QE: TryFrom<E> + Event + Send + Sync + Clone,
-    <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
+    QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
+    <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<QE>,
 {
     pub fn new(
@@ -272,10 +272,9 @@ where
     ) -> Result<(), sqlx::Error> {
         let last_processed_event_id = match result {
             Ok(last_processed_event_id) => last_processed_event_id,
-            Err(PgEventListenerError::Failed {
+            Err(PgEventListenerError {
                 last_processed_event_id,
             }) => last_processed_event_id,
-            Err(PgEventListenerError::Query) => return Ok(()),
         };
         sqlx::query(
             "UPDATE event_listener SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
@@ -296,18 +295,17 @@ where
             .query()
             .clone()
             .change_origin(last_processed_event_id + 1);
-        let mut events_stream = self
-            .event_store
-            .stream(&query)
-            .map_err(|_| PgEventListenerError::Query)?
-            .take(self.config.batch_size);
+        let mut events_stream = self.event_store.stream(&query).take(self.config.batch_size);
 
         while let Some(event) = events_stream.next().await {
+            let event = event.map_err(|_err| PgEventListenerError {
+                last_processed_event_id,
+            })?;
             let event_id = event.id();
             match self.event_handler.handle(event).await {
                 Ok(_) => last_processed_event_id = event_id,
                 Err(_) => {
-                    return Err(PgEventListenerError::Failed {
+                    return Err(PgEventListenerError {
                         last_processed_event_id,
                     })
                 }
@@ -323,8 +321,7 @@ where
             return Ok(());
         };
         let result = self.handle_events_from(last_processed_id).await;
-        self.release_event_listener(result, tx).await?;
-        Ok(())
+        self.release_event_listener(result, tx).await
     }
 }
 
@@ -333,8 +330,8 @@ impl<L, QE, E, S> EventListenerExecutor for PgEventListerExecutor<L, QE, E, S>
 where
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
-    QE: TryFrom<E> + Event + Send + Sync + Clone,
-    <QE as TryFrom<E>>::Error: std::fmt::Debug + Send,
+    QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
+    <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<QE>,
 {
     fn config(&self) -> &PgEventListenerConfig {
