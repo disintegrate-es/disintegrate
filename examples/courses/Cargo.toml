@@ -12,7 +12,7 @@ disintegrate = {version = "0.5.0", path = "../../disintegrate", features = ["mac
 disintegrate-postgres = { version = "0.5.0", path = "../../disintegrate-postgres", features = ["listener"] }
 opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.18.0", features = ["rt-tokio"] }
-rust_decimal = "1.30.0"
+rust_decimal = "1.32.0"
 sqlx = { version = "0.6.3", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.40"
 tokio = { version = "1.28.2", features = ["macros", "rt-multi-thread", "signal"] }
