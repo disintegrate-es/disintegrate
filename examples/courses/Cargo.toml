@@ -16,7 +16,7 @@ rust_decimal = "1.30.0"
 sqlx = { version = "0.6.3", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.40"
 tokio = { version = "1.28.2", features = ["macros", "rt-multi-thread", "signal"] }
-tonic = { version = "0.9.2", features = ["gzip", "transport"] }
+tonic = { version = "0.10.2", features = ["gzip", "transport"] }
 tonic-health = "0.9.2"
 tonic-reflection = "0.9.2"
 tower = "0.4.13"
