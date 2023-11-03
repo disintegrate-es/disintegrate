@@ -20,7 +20,7 @@ tonic = { version = "0.10.2", features = ["gzip", "transport"] }
 tonic-health = "0.10.2"
 tonic-reflection = "0.10.2"
 tower = "0.4.13"
-tower-http = { version = "0.4.1", features = ["trace"] }
+tower-http = { version = "0.4.4", features = ["trace"] }
 prost = {version = "0.12.1"}
 dotenv = "0.15.0"
 
