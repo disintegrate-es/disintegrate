@@ -162,7 +162,7 @@ where
 
         update_sql
             .build()
-            .execute(&mut tx)
+            .execute(&mut *tx)
             .await
             .map_err(map_update_event_id_err)?;
         for event in &persisted_events {
@@ -170,7 +170,7 @@ where
             let mut event_insert = InsertBuilder::new(&**event, "event")
                 .with_id(event.id())
                 .with_payload(&payload);
-            event_insert.build().execute(&mut tx).await?;
+            event_insert.build().execute(&mut *tx).await?;
         }
 
         tx.commit().await?;
