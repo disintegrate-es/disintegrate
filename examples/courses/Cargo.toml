@@ -13,7 +13,7 @@ disintegrate-postgres = { version = "0.5.0", path = "../../disintegrate-postgres
 opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.18.0", features = ["rt-tokio"] }
 rust_decimal = "1.32.0"
-sqlx = { version = "0.6.3", features = [ "runtime-tokio-rustls" , "postgres" ] }
+sqlx = { version = "0.7.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.50"
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
 tonic = { version = "0.10.2", features = ["gzip", "transport"] }
