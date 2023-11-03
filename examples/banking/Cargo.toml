@@ -10,7 +10,7 @@ publish = false
 disintegrate = { version = "0.5.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
 disintegrate-postgres = { version = "0.5.0", path = "../../disintegrate-postgres" }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
-serde = { version = "1.0.163", features = ["derive"] }
+serde = { version = "1.0.190", features = ["derive"] }
 thiserror = "1.0.40"
 anyhow = "1.0.71"
 dotenv = "0.15.0"

@@ -11,7 +11,7 @@ sqlx = { version = "0.6.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
 anyhow = "1.0.51"
 dotenv = "0.15.0"
-serde = { version = "1.0.163", features = ["derive"] }
+serde = { version = "1.0.190", features = ["derive"] }
 thiserror = "1.0.40"
 
 [build-dependencies]
