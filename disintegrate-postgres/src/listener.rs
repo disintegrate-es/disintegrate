@@ -260,7 +260,7 @@ where
                 "#,
         )
         .bind(self.event_handler.id())
-        .fetch_optional(tx)
+        .fetch_optional(&mut **tx)
         .await?
         .map(|r| r.get(0)))
     }
@@ -281,7 +281,7 @@ where
         )
         .bind(last_processed_event_id)
         .bind(self.event_handler.id())
-        .execute(&mut tx)
+        .execute(&mut *tx)
         .await?;
         tx.commit().await
     }
@@ -346,7 +346,7 @@ where
         let mut tx = self.event_store.pool.begin().await?;
         sqlx::query("INSERT INTO event_listener (id, last_processed_event_id) VALUES ($1, -1) ON CONFLICT (id) DO NOTHING")
                 .bind(self.event_handler.id())
-                .execute(&mut tx)
+                .execute(&mut *tx)
                 .await?;
         tx.commit().await?;
         Ok(())
