@@ -18,7 +18,7 @@ never = []
 heck = "0.4.1"
 proc-macro2 = "1.0.47"
 quote = "1.0.33"
-syn = { version = "2.0.15", features = ["full"] }
+syn = { version = "2.0.39", features = ["full"] }
 
 [dev-dependencies]
 disintegrate = { version = "0.5.0", path = "../disintegrate" }
