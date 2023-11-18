@@ -15,6 +15,7 @@ where
     builder: sqlx::QueryBuilder<'a, Postgres>,
     origin: i64,
     last_event_id: Option<i64>,
+    event_ids: Option<&'a [i64]>,
     end: Option<&'a str>,
 }
 
@@ -34,6 +35,7 @@ where
             builder: sqlx::QueryBuilder::new(init),
             origin: query.origin(),
             last_event_id: None,
+            event_ids: None,
             end: None,
         }
     }
@@ -58,6 +60,16 @@ where
         self
     }
 
+    /// Sets the list of event IDs to be included.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_ids` - The list of event IDs to be included in the result.
+    pub fn with_event_ids(mut self, event_ids: &'a [i64]) -> Self {
+        self.event_ids = Some(event_ids);
+        self
+    }
+
     /// Sets the end SQL fragment of the query.
     ///
     /// # Arguments
@@ -70,6 +82,17 @@ where
 
     /// Builds the SQL criteria string.
     pub fn build(&'a mut self) -> Query<'a, Postgres, PgArguments> {
+        if let Some(event_ids) = self.event_ids {
+            self.builder.push(format!(
+                "event_id IN ({}) OR (",
+                event_ids
+                    .iter()
+                    .map(i64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
+        }
+
         self.builder.push(format!("event_id >= {}", self.origin));
 
         if let Some(last_event_id) = self.last_event_id {
@@ -90,6 +113,10 @@ where
                 " AND {}",
                 event_types_in(QE::SCHEMA.types, self.query.excluded_events())
             ));
+        }
+
+        if self.event_ids.is_some() {
+            self.builder.push(")");
         }
 
         if let Some(end) = self.end {
@@ -263,6 +290,18 @@ mod tests {
         assert_eq!(
             sql_builder.build().sql(),
             r#"SELECT * FROM event WHERE event_id >= 0 AND ((bar_id = $1) AND (event_type IN ('Foo'))) AND event_type IN ('Foo')"#
+        );
+    }
+
+    #[test]
+    fn it_builds_query_with_event_ids() {
+        let query = query!(TestEvent, (bar_id == "value1") and (events[Foo]));
+        let mut sql_builder =
+            QueryBuilder::new(&query, "SELECT * FROM event WHERE ").with_event_ids(&[1, 2]);
+
+        assert_eq!(
+            sql_builder.build().sql(),
+            r#"SELECT * FROM event WHERE event_id IN (1,2) OR (event_id >= 0 AND ((bar_id = $1) AND (event_type IN ('Foo'))) AND event_type IN ('Bar','Foo'))"#
         );
     }
 }

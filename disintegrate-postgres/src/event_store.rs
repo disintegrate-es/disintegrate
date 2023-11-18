@@ -140,25 +140,29 @@ where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
-        let mut persisted_events = Vec::new();
+        let mut persisted_events = Vec::with_capacity(events.len());
+        let mut persisted_events_ids = Vec::with_capacity(events.len());
         for event in events {
             let mut sequence_insert =
                 InsertBuilder::new(&event, "event_sequence").returning("event_id");
             let row = sequence_insert.build().fetch_one(&self.pool).await?;
+            persisted_events_ids.push(row.get(0));
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
         let mut tx = self.pool.begin().await?;
-        let last_persisted_event_id = persisted_events
-            .last()
-            .map(|e| e.id())
-            .unwrap_or(last_event_id);
         let mut update_sql = QueryBuilder::new(
             &query,
             "UPDATE event_sequence SET consumed = consumed + 1 WHERE ",
         )
         .with_origin(last_event_id + 1)
-        .with_last_event_id(last_persisted_event_id);
+        .with_last_event_id(
+            persisted_events_ids
+                .last()
+                .copied()
+                .unwrap_or(last_event_id),
+        )
+        .with_event_ids(&persisted_events_ids);
 
         update_sql
             .build()
