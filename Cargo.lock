@@ -659,7 +659,7 @@ dependencies = [
  "dotenv",
  "opentelemetry",
  "opentelemetry-jaeger",
- "prost 0.12.1",
+ "prost 0.12.3",
  "rust_decimal",
  "sqlx",
  "thiserror",
@@ -836,7 +836,7 @@ name = "disintegrate-serde"
 version = "0.2.1"
 dependencies = [
  "apache-avro",
- "prost 0.12.1",
+ "prost 0.12.3",
  "protobuf",
  "serde",
  "serde_json",
@@ -1975,12 +1975,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.12.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4fdd22f3b9c31b53c060df4a0613a1c7f062d4115a2b984dd15b1858f7e340d"
+checksum = "146c289cda302b98a28d40c8b3b90498d6e526dd24ac2ecea73e4e491685b94a"
 dependencies = [
  "bytes",
- "prost-derive 0.12.1",
+ "prost-derive 0.12.3",
 ]
 
 [[package]]
@@ -2019,7 +2019,7 @@ dependencies = [
  "once_cell",
  "petgraph",
  "prettyplease 0.2.9",
- "prost 0.12.1",
+ "prost 0.12.3",
  "prost-types 0.12.1",
  "regex",
  "syn 2.0.39",
@@ -2042,9 +2042,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.12.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "265baba7fabd416cf5078179f7d2cbeca4ce7a9041111900675ea7c4cb8a4c32"
+checksum = "efb6c9a1dd1def8e2124d17e83a20af56f1570d6c2d2bd9e266ccb768df3840e"
 dependencies = [
  "anyhow",
  "itertools",
@@ -2068,7 +2068,7 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e081b29f63d83a4bc75cfc9f3fe424f9156cf92d8a4f0c9407cce9a1b67327cf"
 dependencies = [
- "prost 0.12.1",
+ "prost 0.12.3",
 ]
 
 [[package]]
@@ -3021,7 +3021,7 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding",
  "pin-project",
- "prost 0.12.1",
+ "prost 0.12.3",
  "tokio",
  "tokio-stream",
  "tower",
@@ -3063,7 +3063,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f80db390246dfb46553481f6024f0082ba00178ea495dbb99e70ba9a4fafb5e1"
 dependencies = [
  "async-stream",
- "prost 0.12.1",
+ "prost 0.12.3",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -3075,7 +3075,7 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fa37c513df1339d197f4ba21d28c918b9ef1ac1768265f11ecb6b7f1cba1b76"
 dependencies = [
- "prost 0.12.1",
+ "prost 0.12.3",
  "prost-types 0.12.1",
  "tokio",
  "tokio-stream",
