@@ -11,7 +11,7 @@ disintegrate = { version = "0.5.1", path = "../../disintegrate", features = ["ma
 disintegrate-postgres = { version = "0.5.1", path = "../../disintegrate-postgres" }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
 serde = { version = "1.0.190", features = ["derive"] }
-thiserror = "1.0.50"
+thiserror = "1.0.51"
 anyhow = "1.0.71"
 dotenv = "0.15.0"
 sqlx = { version = "0.7.2", features = [ "runtime-tokio-rustls" , "postgres" ] }

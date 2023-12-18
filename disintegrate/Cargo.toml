@@ -24,7 +24,7 @@ regex = "1.9.4"
 serde = { version = "1.0.190", features = ["derive"] }
 disintegrate-serde = { version = "0.2.1", path = "../disintegrate-serde", optional = true }
 disintegrate-macros = { version = "0.4.1", path = "../disintegrate-macros", optional = true }
-thiserror = "1.0.50"
+thiserror = "1.0.51"
 mockall = "0.11.4"
 
 [dev-dependencies]
