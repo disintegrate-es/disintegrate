@@ -2,11 +2,11 @@
 name = "disintegrate"
 description = "Disintegrate is a Rust library to build event-sourced applications."
 version = "0.6.0"
-license.workspace = true
 edition.workspace = true
 authors.workspace = true
 repository.workspace = true
-readme.workspace = true
+readme = "README.md" 
+license = "LICENSE" 
 
 [features]
 macros = ["disintegrate-macros"]
