@@ -14,7 +14,7 @@ listener = ["dep:tokio", "dep:tokio-util"]
 
 [dependencies]
 disintegrate = { version = "0.6.0", path = "../disintegrate" }
-disintegrate-serde = { version = "0.2.1", path = "../disintegrate-serde" }
+disintegrate-serde = { version = "0.6.0", path = "../disintegrate-serde" }
 disintegrate-macros = { version = "0.6.0", path = "../disintegrate-macros" }
 serde = "1.0.190"
 serde_json = "1.0.108"
@@ -30,4 +30,4 @@ md-5 = "0.10.6"
 paste = "1.0.14"
 
 [dev-dependencies]
-disintegrate-serde = { version = "0.2.1", path = "../disintegrate-serde", features = ["json"] }
+disintegrate-serde = { version = "0.6.0", path = "../disintegrate-serde", features = ["json"] }
