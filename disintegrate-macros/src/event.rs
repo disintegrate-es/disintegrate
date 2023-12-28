@@ -1,40 +1,46 @@
 mod group;
 
 use group::{groups, impl_group};
-use proc_macro::TokenStream;
-use proc_macro2::{Ident, TokenStream as TokenStream2};
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput};
+use syn::{Data, DeriveInput, Error, Result};
 use syn::{DataEnum, DataStruct, Fields};
 
-pub fn event_inner(ast: &DeriveInput) -> TokenStream {
+use crate::reserved_identifier_names;
+use crate::symbol::ID;
+
+pub fn event_inner(ast: &DeriveInput) -> Result<TokenStream> {
     match ast.data {
         Data::Enum(ref data) => {
-            let derive_event = impl_enum(ast, data);
-            let groups = groups(ast);
-            let impl_groups = groups.iter().map(|g| impl_group(ast, g));
-            let derive_event_groups = groups.iter().map(|g| {
-                if let Data::Enum(ref enum_data) = g.data {
-                    impl_enum(g, enum_data)
-                } else {
-                    panic!("Expect to be an enum data");
-                }
-            });
+            let derive_event = impl_enum(ast, data)?;
+            let groups = groups(ast)?;
+            let impl_groups = groups
+                .iter()
+                .map(|g| impl_group(ast, g))
+                .collect::<Result<Vec<TokenStream>>>()?;
+            let derive_event_groups = groups
+                .iter()
+                .map(|g| {
+                    if let Data::Enum(ref enum_data) = g.data {
+                        impl_enum(g, enum_data)
+                    } else {
+                        Err(Error::new(g.ident.span(), "Expect to be an enum"))
+                    }
+                })
+                .collect::<Result<Vec<TokenStream>>>()?;
 
-            let res = quote! {
-                #derive_event
-                #(#impl_groups)*
-                #(#derive_event_groups)*
-            };
-
-            res.into()
+            Ok(quote! {
+                  #derive_event
+                  #(#impl_groups)*
+                  #(#derive_event_groups)*
+            })
         }
-        Data::Struct(ref data) => impl_struct(ast, data).into(),
+        Data::Struct(ref data) => impl_struct(ast, data),
         _ => panic!("Not supported type"),
     }
 }
 
-fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
+fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
     let name = ast.ident.clone();
     let impl_name = data.variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
@@ -55,8 +61,8 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
             Fields::Named(fields) => {
                 let identifiers_fields : Vec<_> = fields.named
                     .iter()
-                    .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("id")))
-                    .map(|f| f.ident.as_ref())
+                    .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
+                    .flat_map(|f| f.ident.as_ref())
                     .collect();
 
                 let reserved_identifiers = reserved_identifier_names(&identifiers_fields);
@@ -91,7 +97,7 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
                     let identifiers_fields: Vec<_> = fields
                         .named
                         .iter()
-                        .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("id")))
+                        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
                         .map(|f| f.ident.as_ref().map(ToString::to_string))
                         .collect();
                     quote! {
@@ -109,7 +115,7 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
     let impl_domain_identifiers_schema = quote! {
         disintegrate::const_slice_unique!(#domain_identifiers_slice)
     };
-    quote! {
+    Ok(quote! {
         impl disintegrate::Event for #name {
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema {
                 types: &[#(#types,)*],
@@ -128,28 +134,25 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> TokenStream2 {
                  }
             }
         }
-    }
+    })
 }
 
-fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> TokenStream2 {
+fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
     let name = ast.ident.clone();
     let impl_type = name.to_string();
 
     let identifiers_fields: Vec<_> = data
         .fields
         .iter()
-        .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("id")))
-        .map(|f| f.ident.as_ref())
+        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
+        .filter_map(|f| f.ident.as_ref())
         .collect();
 
-    let identifiers_names: Vec<_> = identifiers_fields
-        .iter()
-        .map(|f| f.map(ToString::to_string))
-        .collect();
+    let identifiers_names: Vec<_> = identifiers_fields.iter().map(ToString::to_string).collect();
 
     let reserved_identifiers = reserved_identifier_names(&identifiers_fields);
 
-    quote! {
+    Ok(quote! {
         impl disintegrate::Event for #name {
 
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers: &[#(#identifiers_names,)*]};
@@ -163,24 +166,5 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> TokenStream2 {
                 disintegrate::domain_identifiers!{#(#identifiers_fields: self.#identifiers_fields),*}
             }
         }
-    }
-}
-
-fn reserved_identifier_names(identifiers_fields: &[Option<&Ident>]) -> Option<TokenStream2> {
-    const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
-
-    if let Some(Some(identifier)) = identifiers_fields.iter().find(|id| {
-        id.map_or(false, |id| {
-            RESERVED_NAMES.contains(&id.to_string().as_str())
-        })
-    }) {
-        return Some(
-            syn::Error::new(
-                identifier.span(),
-                "Reserved domain identifier name. Please use a different name",
-            )
-            .to_compile_error(),
-        );
-    }
-    None
+    })
 }

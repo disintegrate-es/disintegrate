@@ -8,22 +8,20 @@ use actix_web::{
     App, HttpResponse, HttpServer, Result,
 };
 
-use disintegrate_postgres::PgEventStore;
+use disintegrate_postgres::{PgDecisionMaker, PgEventStore, WithPgSnapshot};
 use domain::DomainEvent;
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgConnectOptions, PgPool};
 
 use crate::domain::{CloseAccount, DepositAmount, OpenAccount, SendMoney, WithdrawAmount};
 
-type DecisionMaker = disintegrate::DecisionMaker<
-    PgEventStore<DomainEvent, disintegrate::serde::json::Json<DomainEvent>>,
->;
-
+type DecisionMaker =
+    PgDecisionMaker<DomainEvent, disintegrate::serde::json::Json<DomainEvent>, WithPgSnapshot>;
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
 pub struct Error {
     #[from]
-    source: disintegrate::decision::Error<disintegrate_postgres::Error, crate::domain::Error>,
+    source: disintegrate::decision::Error<crate::domain::Error>,
 }
 
 #[tokio::main]
@@ -34,8 +32,9 @@ async fn main() -> anyhow::Result<()> {
     let pool = PgPool::connect_with(connect_options).await?;
 
     let serde = disintegrate::serde::json::Json::<DomainEvent>::default();
-    let event_store = PgEventStore::new(pool, serde).await?;
-    let decision_maker = DecisionMaker::new(event_store);
+    let event_store = PgEventStore::new(pool.clone(), serde).await?;
+    let decision_maker =
+        disintegrate_postgres::decision_maker_with_snapshot(event_store, 2).await?;
 
     Ok(HttpServer::new(move || {
         App::new()
@@ -60,10 +59,9 @@ struct Amount {
 async fn open_account(
     decision_maker: Data<DecisionMaker>,
     id: Path<String>,
-    data: Json<Amount>,
 ) -> Result<&'static str, Error> {
     decision_maker
-        .make(OpenAccount::new(id.to_string(), data.amount))
+        .make(OpenAccount::new(id.to_string()))
         .await?;
     Ok("success!")
 }
@@ -130,6 +128,7 @@ impl error::ResponseError for Error {
         match self.source {
             disintegrate::decision::Error::Domain(_) => StatusCode::BAD_REQUEST,
             disintegrate::decision::Error::EventStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            disintegrate::decision::Error::StateStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

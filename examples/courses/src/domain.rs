@@ -3,13 +3,14 @@ mod student;
 mod subscription;
 mod unsubscription;
 pub use course::{CloseCourse, CourseError, CourseId, CreateCourse, RenameCourse};
-use disintegrate::macros::Event;
+use disintegrate::Event;
 pub use student::{RegisterStudent, StudentError, StudentId};
-pub use subscription::{SubscribeStudent, Subscription, SubscriptionError};
+pub use subscription::{SubscribeStudent, SubscriptionError};
 pub use unsubscription::{UnsubscribeStudent, UnsubscriptionError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Event)]
-#[group(SubscriptionEvent, [CourseCreated, CourseClosed, StudentSubscribed, StudentUnsubscribed, StudentRegistered])]
+#[group(CourseSubscriptionEvent, [CourseCreated, CourseClosed, StudentSubscribed, StudentUnsubscribed])]
+#[group(StudentSubscriptionEvent, [StudentSubscribed, StudentUnsubscribed, StudentRegistered])]
 #[group(UnsubscriptionEvent, [StudentSubscribed, StudentUnsubscribed])]
 #[group(CourseEvent, [CourseCreated, CourseClosed, CourseRenamed])]
 #[group(StudentEvent, [StudentRegistered])]

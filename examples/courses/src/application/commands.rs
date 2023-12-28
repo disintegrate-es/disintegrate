@@ -1,16 +1,10 @@
 use super::Application;
 use crate::domain::{
-    CloseCourse, CreateCourse, DomainEvent, RegisterStudent, RenameCourse, SubscribeStudent,
-    UnsubscribeStudent,
+    CloseCourse, CreateCourse, RegisterStudent, RenameCourse, SubscribeStudent, UnsubscribeStudent,
 };
 use anyhow::Result;
-use disintegrate::EventStore;
 
-impl<ES> Application<ES>
-where
-    ES: EventStore<DomainEvent>,
-    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
-{
+impl Application {
     pub async fn create_course(&self, command: CreateCourse) -> Result<()> {
         println!("create course id {}", command.course_id);
         self.decision_maker.make(command).await?;

@@ -1,22 +1,23 @@
 mod commands;
 mod queries;
 
-use crate::{domain::DomainEvent, read_model};
-use disintegrate::{DecisionMaker, EventStore};
+use crate::{domain::DomainEvent, proto, read_model};
+use disintegrate::serde::prost::Prost;
+use disintegrate_postgres::{PgDecisionMaker, WithPgSnapshot};
+
+pub type DecisionMaker =
+    PgDecisionMaker<DomainEvent, Prost<DomainEvent, proto::Event>, WithPgSnapshot>;
 
 #[derive(Clone)]
-pub struct Application<ES> {
-    decision_maker: DecisionMaker<ES>,
+pub struct Application {
+    decision_maker: DecisionMaker,
     read_model: read_model::Repository,
 }
 
-impl<ES> Application<ES>
-where
-    ES: EventStore<DomainEvent>,
-{
-    pub fn new(event_store: ES, read_model: read_model::Repository) -> Self {
+impl Application {
+    pub fn new(decision_maker: DecisionMaker, read_model: read_model::Repository) -> Self {
         Self {
-            decision_maker: DecisionMaker::new(event_store),
+            decision_maker,
             read_model,
         }
     }

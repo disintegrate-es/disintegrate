@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use std::error::Error as StdError;
 
-/// A trait representing an event store.
+/// An event store.
 ///
 /// This trait provides methods for streaming events and appending events to the event store.
 #[async_trait]

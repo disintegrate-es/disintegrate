@@ -1,12 +1,15 @@
 [package]
 name = "cart"
 version = "0.1.0"
-edition = "2021"
 publish = false
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
-disintegrate = { version = "0.5.1", path = "../../disintegrate", features = ["macros", "serde-json"] }
-disintegrate-postgres = { version = "0.5.1", path = "../../disintegrate-postgres" }
+disintegrate = { version = "0.6.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
+disintegrate-postgres = { version = "0.6.0", path = "../../disintegrate-postgres" }
 sqlx = { version = "0.7.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
 anyhow = "1.0.51"

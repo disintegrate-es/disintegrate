@@ -5,7 +5,7 @@ use cart::AddItem;
 use event::DomainEvent;
 
 use anyhow::{Ok, Result};
-use disintegrate::{serde::json::Json, DecisionMaker};
+use disintegrate::serde::json::Json;
 use disintegrate_postgres::PgEventStore;
 use sqlx::{postgres::PgConnectOptions, PgPool};
 
@@ -23,8 +23,8 @@ async fn main() -> Result<()> {
     // Create a PostgreSQL event store
     let event_store = PgEventStore::new(pool, serde).await?;
 
-    // Create a DecisionMaker
-    let decision_maker = DecisionMaker::new(event_store);
+    // Create a Postgres DecisionMaker
+    let decision_maker = disintegrate_postgres::decision_maker(event_store);
 
     // Make the decision. This performs the business decision and persists the changes into the
     // event store

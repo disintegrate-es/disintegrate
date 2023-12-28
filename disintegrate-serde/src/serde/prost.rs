@@ -1,3 +1,6 @@
+//! A Protobuf serialization and deserialization module using Prost.
+//!
+//! This module provides the capability to serialize and deserialize data using the Prost library.
 use std::marker::PhantomData;
 
 use prost::{bytes::Bytes, Message};
@@ -5,9 +8,7 @@ use prost::{bytes::Bytes, Message};
 use super::Error;
 use crate::serde::{Deserializer, Serializer};
 
-/// A serialization and deserialization module using Prost.
-///
-/// This module provides the capability to serialize and deserialize data using the Prost library.
+/// A struct to serialize and deserialize Protobuf payloads.
 #[derive(Debug, Clone, Copy)]
 pub struct Prost<I, O>(PhantomData<I>, PhantomData<O>)
 where

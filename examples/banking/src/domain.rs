@@ -1,15 +1,14 @@
-use disintegrate::macros::Event;
-use disintegrate::{events_types, query, Decision, State, StreamQuery};
+use disintegrate::{event_types, union, Decision, Event, StateMutate, StateQuery, StreamQuery};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
 #[group(AccountStateEvent, [AccountOpened, AccountClosed])]
+#[group(AccountBalanceEvent, [AmountDeposited, AmountWithdrawn, TransferSent])]
 pub enum DomainEvent {
     AccountOpened {
         #[id]
         account_id: AccountId,
-        amount: i32,
     },
     AccountClosed {
         #[id]
@@ -50,50 +49,38 @@ pub enum Error {
 
 pub type AccountId = String;
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, StateQuery, Clone, Debug, Serialize, Deserialize)]
+#[state_query(AccountBalanceEvent)]
 pub struct AccountBalance {
-    id: AccountId,
+    #[id]
+    account_id: AccountId,
+    #[id]
+    beneficiary_id: AccountId,
     balance: i32,
-    opened: bool,
-    closed: bool,
 }
 impl AccountBalance {
-    pub fn new(id: AccountId) -> Self {
+    pub fn new(account_id: AccountId) -> Self {
         Self {
-            id,
+            account_id: account_id.clone(),
+            beneficiary_id: account_id,
             balance: 0,
-            opened: false,
-            closed: false,
         }
     }
 }
 
-impl State for AccountBalance {
-    type Event = DomainEvent;
-
-    fn query(&self) -> StreamQuery<Self::Event> {
-        query!(DomainEvent, (account_id == self.id) or (beneficiary_id == self.id))
-    }
-
+impl StateMutate for AccountBalance {
     fn mutate(&mut self, event: Self::Event) {
         match event {
-            DomainEvent::AccountOpened { amount, .. } => {
-                self.opened = true;
-                self.balance = amount;
-            }
-            DomainEvent::AccountClosed { .. } => {
-                self.closed = true;
-            }
-            DomainEvent::AmountDeposited { amount, .. } => {
+            AccountBalanceEvent::AmountDeposited { amount, .. } => {
                 self.balance += amount;
             }
-            DomainEvent::AmountWithdrawn { amount, .. } => {
+            AccountBalanceEvent::AmountWithdrawn { amount, .. } => {
                 self.balance -= amount;
             }
-            DomainEvent::TransferSent {
+            AccountBalanceEvent::TransferSent {
                 account_id, amount, ..
             } => {
-                if self.id == account_id {
+                if self.account_id == account_id {
                     self.balance -= amount;
                 } else {
                     self.balance += amount;
@@ -103,29 +90,26 @@ impl State for AccountBalance {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, StateQuery, Clone, Debug, Serialize, Deserialize)]
+#[state_query(AccountStateEvent)]
 pub struct AccountState {
-    id: AccountId,
+    #[id]
+    account_id: AccountId,
     opened: bool,
     closed: bool,
 }
+
 impl AccountState {
-    pub fn new(id: AccountId) -> Self {
+    pub fn new(account_id: AccountId) -> Self {
         Self {
-            id,
+            account_id,
             opened: false,
             closed: false,
         }
     }
 }
 
-impl State for AccountState {
-    type Event = AccountStateEvent;
-
-    fn query(&self) -> StreamQuery<Self::Event> {
-        query!(AccountStateEvent, account_id == self.id)
-    }
-
+impl StateMutate for AccountState {
     fn mutate(&mut self, event: Self::Event) {
         match event {
             AccountStateEvent::AccountOpened { .. } => {
@@ -139,38 +123,32 @@ impl State for AccountState {
 }
 pub struct OpenAccount {
     id: AccountId,
-    initial_amount: i32,
 }
 
 impl OpenAccount {
-    pub fn new(id: AccountId, initial_amount: i32) -> Self {
-        Self { id, initial_amount }
+    pub fn new(id: AccountId) -> Self {
+        Self { id }
     }
 }
 
 impl Decision for OpenAccount {
     type Event = DomainEvent;
 
-    type State = AccountState;
+    type StateQuery = AccountState;
 
     type Error = Error;
 
-    fn default_state(&self) -> Self::State {
+    fn state_query(&self) -> Self::StateQuery {
         AccountState::new(self.id.clone())
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        None
-    }
-
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn process(&self, state: &Self::StateQuery) -> Result<Vec<Self::Event>, Self::Error> {
         if state.opened {
             return Err(Error::AccountAlreadyOpened);
         }
 
         Ok(vec![DomainEvent::AccountOpened {
             account_id: self.id.clone(),
-            amount: self.initial_amount,
         }])
     }
 }
@@ -188,19 +166,15 @@ impl CloseAccount {
 impl Decision for CloseAccount {
     type Event = DomainEvent;
 
-    type State = AccountState;
+    type StateQuery = AccountState;
 
     type Error = Error;
 
-    fn default_state(&self) -> Self::State {
+    fn state_query(&self) -> Self::StateQuery {
         AccountState::new(self.id.clone())
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        None
-    }
-
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn process(&self, state: &Self::StateQuery) -> Result<Vec<Self::Event>, Self::Error> {
         if !state.opened {
             return Err(Error::AccountNotFound);
         }
@@ -228,18 +202,17 @@ impl DepositAmount {
 
 impl Decision for DepositAmount {
     type Event = DomainEvent;
-    type State = AccountState;
+    type StateQuery = (AccountState, AccountBalance);
     type Error = Error;
 
-    fn default_state(&self) -> Self::State {
-        AccountState::new(self.id.clone())
+    fn state_query(&self) -> Self::StateQuery {
+        (
+            AccountState::new(self.id.clone()),
+            AccountBalance::new(self.id.clone()),
+        )
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        None
-    }
-
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn process(&self, (state, _): &Self::StateQuery) -> Result<Vec<Self::Event>, Self::Error> {
         if !state.opened {
             return Err(Error::AccountNotFound);
         }
@@ -269,23 +242,29 @@ impl WithdrawAmount {
 impl Decision for WithdrawAmount {
     type Event = DomainEvent;
 
-    type State = AccountBalance;
+    type StateQuery = (AccountState, AccountBalance);
 
     type Error = Error;
 
-    fn default_state(&self) -> Self::State {
-        AccountBalance::new(self.id.clone())
-    }
-
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        Some(
-            self.default_state()
-                .query()
-                .exclude_events(events_types!(DomainEvent, [AmountDeposited])),
+    fn state_query(&self) -> Self::StateQuery {
+        (
+            AccountState::new(self.id.clone()),
+            AccountBalance::new(self.id.clone()),
         )
     }
 
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+        let (account_state, account_balance) = self.state_query();
+        Some(union!(
+            &account_state,
+            account_balance.exclude_events(event_types!(DomainEvent, [AmountDeposited]))
+        ))
+    }
+
+    fn process(
+        &self,
+        (state, balance): &Self::StateQuery,
+    ) -> Result<Vec<Self::Event>, Self::Error> {
         if !state.opened {
             return Err(Error::AccountNotFound);
         }
@@ -294,7 +273,7 @@ impl Decision for WithdrawAmount {
             return Err(Error::AccountClosed);
         }
 
-        if state.balance < self.amount {
+        if balance.balance < self.amount {
             return Err(Error::InsufficientBalance);
         }
 
@@ -305,58 +284,10 @@ impl Decision for WithdrawAmount {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct MoneyTransfer {
     account_balance: AccountBalance,
     beneficiary_status: AccountState,
-}
-
-impl MoneyTransfer {
-    pub fn new(account_id: AccountId, beneficiary_id: AccountId) -> Self {
-        Self {
-            account_balance: AccountBalance {
-                id: account_id,
-                ..Default::default()
-            },
-            beneficiary_status: AccountState {
-                id: beneficiary_id,
-                ..Default::default()
-            },
-        }
-    }
-}
-
-impl State for MoneyTransfer {
-    type Event = DomainEvent;
-
-    fn query(&self) -> StreamQuery<Self::Event> {
-        query!(DomainEvent,
-            ((account_id == self.account_balance.id) or (beneficiary_id == self.account_balance.id))
-         or ((account_id == self.beneficiary_status.id) and (events[AccountOpened, AccountClosed]))
-        )
-    }
-
-    fn mutate(&mut self, event: Self::Event) {
-        match &event {
-            DomainEvent::AccountOpened { account_id, .. } => {
-                if account_id == &self.account_balance.id {
-                    self.account_balance.mutate(event);
-                } else {
-                    self.beneficiary_status.mutate(event.try_into().unwrap());
-                }
-            }
-            DomainEvent::AccountClosed { account_id } => {
-                if account_id == &self.account_balance.id {
-                    self.account_balance.mutate(event);
-                } else {
-                    self.beneficiary_status.mutate(event.try_into().unwrap());
-                }
-            }
-            _ => {
-                self.account_balance.mutate(event);
-            }
-        }
-    }
 }
 
 pub struct SendMoney {
@@ -378,46 +309,52 @@ impl SendMoney {
 impl Decision for SendMoney {
     type Event = DomainEvent;
 
-    type State = MoneyTransfer;
+    type StateQuery = (AccountState, AccountBalance, AccountState);
 
     type Error = Error;
 
-    fn default_state(&self) -> Self::State {
-        MoneyTransfer::new(self.account_id.clone(), self.beneficiary_id.clone())
-    }
-
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        Some(
-            query!(DomainEvent,
-                (account_id == self.account_id)
-             or ((account_id == self.beneficiary_id) and (events[AccountClosed]))
-            )
-            .exclude_events(events_types!(DomainEvent, [AmountDeposited])),
+    fn state_query(&self) -> Self::StateQuery {
+        (
+            AccountState::new(self.account_id.clone()),
+            AccountBalance::new(self.account_id.clone()),
+            AccountState::new(self.beneficiary_id.clone()),
         )
     }
 
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+        let (account_state, account_balance, beneficiary_state) = self.state_query();
+        Some(union!(
+            &account_state,
+            account_balance.exclude_events(event_types!(AccountBalanceEvent, [AmountDeposited])),
+            &beneficiary_state
+        ))
+    }
+
+    fn process(
+        &self,
+        (account_state, account_balance, beneficiary_account_state): &Self::StateQuery,
+    ) -> Result<Vec<Self::Event>, Self::Error> {
         if self.amount < 0 {
             return Err(Error::InvalidAmount);
         }
 
-        if !state.account_balance.opened {
+        if !account_state.opened {
             return Err(Error::AccountNotFound);
         }
 
-        if !state.beneficiary_status.opened {
+        if !beneficiary_account_state.opened {
             return Err(Error::AccountNotFound);
         }
 
-        if state.account_balance.closed {
+        if account_state.closed {
             return Err(Error::AccountClosed);
         }
 
-        if state.beneficiary_status.closed {
+        if beneficiary_account_state.closed {
             return Err(Error::AccountClosed);
         }
 
-        if state.account_balance.balance < self.amount {
+        if account_balance.balance < self.amount {
             return Err(Error::InsufficientBalance);
         }
 
@@ -436,28 +373,25 @@ mod test {
     #[test]
     fn it_opens_account() {
         disintegrate::TestHarness::given([])
-            .when(OpenAccount::new("some account".into(), 10))
+            .when(OpenAccount::new("some account".into()))
             .then([DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 10,
             }]);
     }
 
     #[test]
     fn it_should_not_open_an_account_that_is_already_opened() {
-        disintegrate::TestHarness::given([AccountStateEvent::AccountOpened {
-            account_id: "some course".to_string(),
-            amount: 20,
+        disintegrate::TestHarness::given([DomainEvent::AccountOpened {
+            account_id: "some account".to_string(),
         }])
-        .when(OpenAccount::new("some account".into(), 10))
+        .when(OpenAccount::new("some account".into()))
         .then_err(Error::AccountAlreadyOpened);
     }
 
     #[test]
     fn it_closes_account() {
-        disintegrate::TestHarness::given([AccountStateEvent::AccountOpened {
+        disintegrate::TestHarness::given([DomainEvent::AccountOpened {
             account_id: "some account".into(),
-            amount: 10,
         }])
         .when(CloseAccount::new("some account".into()))
         .then(vec![DomainEvent::AccountClosed {
@@ -475,11 +409,10 @@ mod test {
     #[test]
     fn it_should_not_close_an_account_that_is_already_closed() {
         disintegrate::TestHarness::given([
-            AccountStateEvent::AccountOpened {
+            DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 10,
             },
-            AccountStateEvent::AccountClosed {
+            DomainEvent::AccountClosed {
                 account_id: "some account".into(),
             },
         ])
@@ -489,9 +422,8 @@ mod test {
 
     #[test]
     fn it_deposits_an_amount() {
-        disintegrate::TestHarness::given([AccountStateEvent::AccountOpened {
+        disintegrate::TestHarness::given([DomainEvent::AccountOpened {
             account_id: "some account".into(),
-            amount: 10,
         }])
         .when(DepositAmount::new("some account".into(), 20))
         .then([DomainEvent::AmountDeposited {
@@ -510,11 +442,10 @@ mod test {
     #[test]
     fn it_should_not_deposit_an_amount_into_an_account_that_is_closed() {
         disintegrate::TestHarness::given([
-            AccountStateEvent::AccountOpened {
+            DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 10,
             },
-            AccountStateEvent::AccountClosed {
+            DomainEvent::AccountClosed {
                 account_id: "some account".into(),
             },
         ])
@@ -524,10 +455,15 @@ mod test {
 
     #[test]
     fn it_withdraws_an_amount() {
-        disintegrate::TestHarness::given([DomainEvent::AccountOpened {
-            account_id: "some account".into(),
-            amount: 10,
-        }])
+        disintegrate::TestHarness::given([
+            DomainEvent::AccountOpened {
+                account_id: "some account".into(),
+            },
+            DomainEvent::AmountDeposited {
+                account_id: "some account".into(),
+                amount: 10,
+            },
+        ])
         .when(WithdrawAmount::new("some account".into(), 10))
         .then([DomainEvent::AmountWithdrawn {
             account_id: "some account".into(),
@@ -547,7 +483,6 @@ mod test {
         disintegrate::TestHarness::given([
             DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 10,
             },
             DomainEvent::AccountClosed {
                 account_id: "some account".into(),
@@ -562,7 +497,10 @@ mod test {
         disintegrate::TestHarness::given([
             DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 30,
+            },
+            DomainEvent::AmountDeposited {
+                account_id: "some account".into(),
+                amount: 10,
             },
             DomainEvent::AmountWithdrawn {
                 account_id: "some account".into(),
@@ -578,7 +516,6 @@ mod test {
         disintegrate::TestHarness::given([
             DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 5,
             },
             DomainEvent::AmountDeposited {
                 account_id: "some account".into(),
@@ -586,7 +523,6 @@ mod test {
             },
             DomainEvent::AccountOpened {
                 account_id: "some beneficiary".into(),
-                amount: 5,
             },
         ])
         .when(SendMoney::new(
@@ -605,7 +541,6 @@ mod test {
     fn it_should_not_send_a_transfer_when_the_account_is_not_opened() {
         disintegrate::TestHarness::given([DomainEvent::AccountOpened {
             account_id: "some beneficiary".into(),
-            amount: 5,
         }])
         .when(SendMoney::new(
             "some account".into(),
@@ -620,7 +555,6 @@ mod test {
         disintegrate::TestHarness::given([
             DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 5,
             },
             DomainEvent::AmountDeposited {
                 account_id: "some account".into(),
@@ -640,17 +574,19 @@ mod test {
         disintegrate::TestHarness::given([
             DomainEvent::AccountOpened {
                 account_id: "some account".into(),
-                amount: 5,
+            },
+            DomainEvent::AmountDeposited {
+                account_id: "some account".into(),
+                amount: 7,
             },
             DomainEvent::AccountOpened {
                 account_id: "some beneficiary".into(),
-                amount: 5,
             },
         ])
         .when(SendMoney::new(
             "some account".into(),
             "some beneficiary".into(),
-            7,
+            8,
         ))
         .then_err(Error::InsufficientBalance);
     }

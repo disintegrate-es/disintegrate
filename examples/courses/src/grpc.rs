@@ -1,29 +1,24 @@
 use async_trait::async_trait;
-use disintegrate::EventStore;
 
 use crate::{
     application::Application,
-    domain::{self, DomainEvent},
+    domain::{self},
     proto,
 };
 
 #[derive(Clone)]
-pub struct CourseApi<ES> {
-    app: Application<ES>,
+pub struct CourseApi {
+    app: Application,
 }
 
-impl<ES> CourseApi<ES> {
-    pub fn new(app: Application<ES>) -> Self {
+impl CourseApi {
+    pub fn new(app: Application) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<ES> proto::course_server::Course for CourseApi<ES>
-where
-    ES: EventStore<DomainEvent> + Send + Sync + 'static,
-    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
-{
+impl proto::course_server::Course for CourseApi {
     async fn create(
         &self,
         request: tonic::Request<proto::CreateCourseRequest>,
@@ -93,22 +88,18 @@ where
 }
 
 #[derive(Clone)]
-pub struct StudentApi<ES> {
-    app: Application<ES>,
+pub struct StudentApi {
+    app: Application,
 }
 
-impl<ES> StudentApi<ES> {
-    pub fn new(app: Application<ES>) -> Self {
+impl StudentApi {
+    pub fn new(app: Application) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<ES> proto::student_server::Student for StudentApi<ES>
-where
-    ES: EventStore<DomainEvent> + Send + Sync + 'static,
-    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
-{
+impl proto::student_server::Student for StudentApi {
     async fn register(
         &self,
         request: tonic::Request<proto::RegisterStudentRequest>,
@@ -126,22 +117,18 @@ where
 }
 
 #[derive(Clone)]
-pub struct SubscriptionApi<ES> {
-    app: Application<ES>,
+pub struct SubscriptionApi {
+    app: Application,
 }
 
-impl<ES> SubscriptionApi<ES> {
-    pub fn new(app: Application<ES>) -> Self {
+impl SubscriptionApi {
+    pub fn new(app: Application) -> Self {
         Self { app }
     }
 }
 
 #[async_trait]
-impl<ES> proto::subscription_server::Subscription for SubscriptionApi<ES>
-where
-    ES: EventStore<DomainEvent> + Send + Sync + 'static,
-    <ES as disintegrate::EventStore<DomainEvent>>::Error: std::error::Error + 'static,
-{
+impl proto::subscription_server::Subscription for SubscriptionApi {
     async fn subscribe(
         &self,
         request: tonic::Request<proto::SubscribeStudentRequest>,

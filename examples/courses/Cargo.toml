@@ -1,15 +1,17 @@
 [package]
 name = "courses"
 version = "0.1.0"
-edition = "2021"
 publish = false
-
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow = "1.0.71"
 async-trait = "0.1.74"
-disintegrate = {version = "0.5.1", path = "../../disintegrate", features = ["macros", "serde-prost"] }
-disintegrate-postgres = { version = "0.5.1", path = "../../disintegrate-postgres", features = ["listener"] }
+disintegrate = {version = "0.6.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
+disintegrate-postgres = { version = "0.6.0", path = "../../disintegrate-postgres", features = ["listener"] }
 opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.18.0", features = ["rt-tokio"] }
 rust_decimal = "1.33.1"
@@ -23,6 +25,7 @@ tower = "0.4.13"
 tower-http = { version = "0.4.4", features = ["trace"] }
 prost = {version = "0.12.3"}
 dotenv = "0.15.0"
+serde = "1.0.193"
 
 [build-dependencies]
 tonic-build = { version = "0.10.2", features = ["prost"] }

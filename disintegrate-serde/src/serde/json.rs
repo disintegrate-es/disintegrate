@@ -1,3 +1,4 @@
+//! A JSON serialization and deserialization module.
 use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::Error;
 use crate::serde::{Deserializer, Serializer};
 
-/// A JSON serialization and deserialization module.
+/// A struct to serialize and deserialize JSON payloads.
 #[derive(Debug, Clone, Copy)]
 pub struct Json<T>(PhantomData<T>);
 

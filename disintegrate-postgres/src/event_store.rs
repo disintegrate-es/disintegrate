@@ -1,7 +1,7 @@
-//! PostgreSQL Event Store
+//! PostgreSQL Snapshotter
 //!
-//! This module provides an implementation of the `EventStore` trait using PostgreSQL as the underlying storage.
-//! It allows storing and retrieving events from a PostgreSQL database.
+//! This module provides an implementation of the `Snapshotter` trait using PostgreSQL as the underlying storage.
+//! It allows storing and retrieving snapshots from a PostgreSQL database.
 mod insert_builder;
 mod query_builder;
 #[cfg(test)]
@@ -94,7 +94,7 @@ where
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
         stream! {
-            let mut sql = QueryBuilder::new(query, "SELECT event_id, payload FROM event WHERE ")
+            let mut sql = QueryBuilder::new(query.clone(), "SELECT event_id, payload FROM event WHERE ")
             .end_with("ORDER BY event_id ASC");
 
             for await row in sql.build()
@@ -150,12 +150,11 @@ where
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
-        let mut tx = self.pool.begin().await?;
         let mut update_sql = QueryBuilder::new(
-            &query,
+            query,
             "UPDATE event_sequence SET consumed = consumed + 1 WHERE ",
         )
-        .with_origin(last_event_id + 1)
+        .with_origin(last_event_id)
         .with_last_event_id(
             persisted_events_ids
                 .last()
@@ -164,11 +163,13 @@ where
         )
         .with_event_ids(&persisted_events_ids);
 
+        let mut tx = self.pool.begin().await?;
         update_sql
             .build()
             .execute(&mut *tx)
             .await
             .map_err(map_update_event_id_err)?;
+
         for event in &persisted_events {
             let payload = self.serde.serialize((**event).clone());
             let mut event_insert = InsertBuilder::new(&**event, "event")
@@ -176,7 +177,6 @@ where
                 .with_payload(&payload);
             event_insert.build().execute(&mut *tx).await?;
         }
-
         tx.commit().await?;
 
         Ok(persisted_events)

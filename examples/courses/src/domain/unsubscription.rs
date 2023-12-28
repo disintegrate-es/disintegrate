@@ -1,4 +1,5 @@
-use disintegrate::{Decision, State, StreamQuery};
+use disintegrate::{Decision, StateMutate, StateQuery};
+use serde::{Deserialize, Serialize};
 
 use super::{CourseId, DomainEvent, StudentId, UnsubscriptionEvent};
 
@@ -8,7 +9,8 @@ pub enum UnsubscriptionError {
     StudentNotSubscribed,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, StateQuery, Default, Serialize, Deserialize)]
+#[state_query(UnsubscriptionEvent)]
 pub struct Unsubscription {
     course_id: CourseId,
     student_id: StudentId,
@@ -24,17 +26,7 @@ impl Unsubscription {
     }
 }
 
-impl State for Unsubscription {
-    type Event = UnsubscriptionEvent;
-
-    fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(
-            UnsubscriptionEvent,
-                (course_id == self.course_id) and
-                (student_id == self.student_id)
-        )
-    }
-
+impl StateMutate for Unsubscription {
     fn mutate(&mut self, event: Self::Event) {
         match event {
             UnsubscriptionEvent::StudentSubscribed { .. } => {
@@ -64,19 +56,15 @@ impl UnsubscribeStudent {
 impl Decision for UnsubscribeStudent {
     type Event = DomainEvent;
 
-    type State = Unsubscription;
+    type StateQuery = Unsubscription;
 
     type Error = UnsubscriptionError;
 
-    fn default_state(&self) -> Self::State {
+    fn state_query(&self) -> Self::StateQuery {
         Unsubscription::new(self.student_id.clone(), self.course_id.clone())
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        None
-    }
-
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn process(&self, state: &Self::StateQuery) -> Result<Vec<Self::Event>, Self::Error> {
         if !state.student_subscribed {
             return Err(UnsubscriptionError::StudentNotSubscribed);
         }
@@ -94,7 +82,7 @@ mod test {
 
     #[test]
     fn it_unsubscribes_a_student() {
-        disintegrate::TestHarness::given([UnsubscriptionEvent::StudentSubscribed {
+        disintegrate::TestHarness::given([DomainEvent::StudentSubscribed {
             student_id: "some student".to_string(),
             course_id: "some course".to_string(),
         }])
