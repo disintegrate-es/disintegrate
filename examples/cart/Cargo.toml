@@ -15,7 +15,7 @@ tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"]
 anyhow = "1.0.51"
 dotenv = "0.15.0"
 serde = { version = "1.0.190", features = ["derive"] }
-thiserror = "1.0.50"
+thiserror = "1.0.52"
 
 [build-dependencies]
 tonic-build = { version = "0.9.2", features = ["prost"] }
