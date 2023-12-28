@@ -1,4 +1,5 @@
-use disintegrate::{Decision, State, StreamQuery};
+use disintegrate::{Decision, StateMutate, StateQuery};
+use serde::{Deserialize, Serialize};
 
 use super::{DomainEvent, StudentEvent};
 
@@ -14,8 +15,10 @@ pub enum StudentError {
     NameEmpty,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, StateQuery, Clone, Serialize, Deserialize)]
+#[state_query(StudentEvent)]
 pub struct Student {
+    #[id]
     student_id: StudentId,
     name: String,
     registered: bool,
@@ -45,13 +48,7 @@ impl Student {
     }
 }
 
-impl State for Student {
-    type Event = StudentEvent;
-
-    fn query(&self) -> StreamQuery<Self::Event> {
-        disintegrate::query!(StudentEvent, student_id == self.student_id)
-    }
-
+impl StateMutate for Student {
     fn mutate(&mut self, event: Self::Event) {
         match event {
             StudentEvent::StudentRegistered { name, .. } => {
@@ -76,19 +73,15 @@ impl RegisterStudent {
 impl Decision for RegisterStudent {
     type Event = DomainEvent;
 
-    type State = Student;
+    type StateQuery = Student;
 
     type Error = StudentError;
 
-    fn default_state(&self) -> Self::State {
+    fn state_query(&self) -> Self::StateQuery {
         Student::new(self.student_id.clone())
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-        None
-    }
-
-    fn process(&self, state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
+    fn process(&self, state: &Self::StateQuery) -> Result<Vec<Self::Event>, Self::Error> {
         if state.registered {
             return Err(StudentError::AlreadyRegistered);
         }
@@ -119,7 +112,7 @@ mod test {
 
     #[test]
     fn it_should_not_register_a_student_when_it_already_exists() {
-        disintegrate::TestHarness::given([StudentEvent::StudentRegistered {
+        disintegrate::TestHarness::given([DomainEvent::StudentRegistered {
             student_id: "1".into(),
             name: "some name".into(),
         }])

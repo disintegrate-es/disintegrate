@@ -28,13 +28,13 @@ pub trait Event {
     fn name(&self) -> &'static str;
 }
 
-/// Wrapper for a persisted event
+/// Wrapper for a persisted event.
 ///
 /// It contains an ID assigned by the event store and the event itself.
 #[derive(Debug, Clone)]
 pub struct PersistedEvent<E: Event> {
-    id: i64,
-    event: E,
+    pub(crate) id: i64,
+    pub(crate) event: E,
 }
 
 impl<E: Event> PersistedEvent<E> {

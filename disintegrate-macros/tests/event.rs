@@ -1,5 +1,4 @@
 use disintegrate::{ident, Event};
-use disintegrate_macros::Event;
 
 #[derive(Event, Clone, Debug, PartialEq, Eq)]
 struct UserUpdated {

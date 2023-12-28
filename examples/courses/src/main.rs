@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Ok, Result};
+use application::Application;
 use disintegrate::serde::prost::Prost;
 use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore};
 use tokio::signal;
@@ -9,16 +10,17 @@ use tower_http::trace::TraceLayer;
 use courses::{application, domain::DomainEvent, grpc, proto, read_model};
 
 type EventStore = PgEventStore<DomainEvent, Prost<DomainEvent, proto::Event>>;
-type Application = courses::application::Application<EventStore>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let pool = courses::postgres::connect().await?;
     let serde = Prost::<DomainEvent, proto::Event>::default();
-
     let event_store = PgEventStore::new(pool.clone(), serde).await?;
+    let decision_maker =
+        disintegrate_postgres::decision_maker_with_snapshot(event_store.clone(), 10).await?;
+
     let read_model = read_model::Repository::new(pool.clone());
-    let app = application::Application::new(event_store.clone(), read_model);
+    let app = Application::new(decision_maker, read_model);
 
     tokio::try_join!(grpc_server(app), event_listener(pool, event_store))?;
     Ok(())

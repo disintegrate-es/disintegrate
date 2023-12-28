@@ -294,7 +294,7 @@ where
             .event_handler
             .query()
             .clone()
-            .change_origin(last_processed_event_id + 1);
+            .change_origin(last_processed_event_id);
         let mut events_stream = self.event_store.stream(&query).take(self.config.batch_size);
 
         while let Some(event) = events_stream.next().await {
@@ -344,7 +344,7 @@ where
 
     async fn init(&self) -> Result<(), Error> {
         let mut tx = self.event_store.pool.begin().await?;
-        sqlx::query("INSERT INTO event_listener (id, last_processed_event_id) VALUES ($1, -1) ON CONFLICT (id) DO NOTHING")
+        sqlx::query("INSERT INTO event_listener (id, last_processed_event_id) VALUES ($1, 0) ON CONFLICT (id) DO NOTHING")
                 .bind(self.event_handler.id())
                 .execute(&mut *tx)
                 .await?;

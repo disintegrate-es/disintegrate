@@ -4,10 +4,7 @@
 //! and make assertions about the resulting changes.
 use std::fmt::Debug;
 
-use crate::{
-    decision::{Decision, State},
-    Event,
-};
+use crate::{Decision, Event, IntoState, IntoStatePart, MultiState, PersistedEvent};
 
 /// Test harness for testing decisions.
 pub struct TestHarness;
@@ -38,7 +35,7 @@ pub struct When<R, ERR> {
     result: Result<Vec<R>, ERR>,
 }
 
-pub struct TestHarnessStep<E: Event + Clone, ST> {
+pub struct TestHarnessStep<E, ST> {
     history: Vec<E>,
     _step: ST,
 }
@@ -53,17 +50,22 @@ impl<E: Event + Clone> TestHarnessStep<E, Given> {
     /// # Returns
     ///
     /// A `TestHarnessStep` representing the "when" step.
-    pub fn when<D, S, R, ERR>(self, decision: D) -> TestHarnessStep<E, When<R, ERR>>
+    pub fn when<D, SP, S, ERR>(self, decision: D) -> TestHarnessStep<E, When<E, ERR>>
     where
-        D: Decision<Event = R, Error = ERR, State = S>,
-        S: State<Event = E>,
-        R: Event,
+        D: Decision<Event = E, Error = ERR, StateQuery = S>,
+        S: IntoStatePart<S, Target = SP>,
+        SP: IntoState<S> + MultiState<E>,
     {
-        let mut state = decision.default_state();
-        for event in self.history.iter() {
-            state.mutate(event.clone());
+        let mut state = decision.state_query().into_state_part();
+        for event in self
+            .history
+            .iter()
+            .enumerate()
+            .map(|(id, event)| PersistedEvent::new((id + 1) as i64, event.clone()))
+        {
+            state.mutate_all(event);
         }
-        let result = decision.process(&state);
+        let result = decision.process(&state.into_state());
         TestHarnessStep {
             history: self.history,
             _step: When { result },
@@ -114,119 +116,65 @@ mod tests {
     use std::vec;
 
     use super::*;
-    use crate::decision::State;
-    use crate::event::{Event, EventSchema};
-    use crate::stream_query::StreamQuery;
-
-    #[derive(Clone, Debug, PartialEq)]
-    enum SampleEvent {
-        Created(String),
-        Deleted(String),
-    }
-
-    impl Event for SampleEvent {
-        const SCHEMA: EventSchema = EventSchema {
-            types: &["Created", "Deleted"],
-            domain_identifiers: &[],
-        };
-
-        fn domain_identifiers(&self) -> crate::domain_identifier::DomainIdentifierSet {
-            todo!()
-        }
-
-        fn name(&self) -> &'static str {
-            todo!()
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
-    struct SampleState {
-        changes: Vec<SampleEvent>,
-    }
-    impl SampleState {
-        fn new() -> Self {
-            SampleState {
-                changes: Vec::new(),
-            }
-        }
-    }
-
-    impl State for SampleState {
-        type Event = SampleEvent;
-
-        fn query(&self) -> StreamQuery<Self::Event> {
-            todo!()
-        }
-
-        fn mutate(&mut self, event: Self::Event) {
-            self.changes.push(event);
-        }
-    }
-
-    struct SampleDecision {
-        result: Result<Vec<SampleEvent>, &'static str>,
-    }
-
-    impl SampleDecision {
-        fn new(result: Result<Vec<SampleEvent>, &'static str>) -> Self {
-            Self { result }
-        }
-    }
-
-    impl Decision for SampleDecision {
-        type Event = SampleEvent;
-        type State = SampleState;
-        type Error = &'static str;
-
-        fn default_state(&self) -> Self::State {
-            SampleState::new()
-        }
-
-        fn process(&self, _state: &Self::State) -> Result<Vec<Self::Event>, Self::Error> {
-            self.result.clone()
-        }
-
-        fn validation_query(&self) -> Option<StreamQuery<<Self::State as State>::Event>> {
-            None
-        }
-    }
+    use crate::utils::tests::*;
 
     #[test]
     fn it_should_set_up_initial_state_and_apply_the_history() {
-        TestHarness::given(vec![SampleEvent::Created("x".into())])
-            .when(SampleDecision::new(Ok(vec![
-                SampleEvent::Created("x".into()),
-                SampleEvent::Deleted("x".into()),
-            ])))
-            .then([
-                SampleEvent::Created("x".into()),
-                SampleEvent::Deleted("x".into()),
-            ]);
+        let mut mock_add_item = MockDecision::new();
+        mock_add_item
+            .expect_state_query()
+            .once()
+            .return_once(|| cart("c1", []));
+        mock_add_item
+            .expect_process()
+            .once()
+            .return_once(|_| Ok(vec![item_added_event("p2", "c1")]));
+
+        TestHarness::given(vec![item_added_event("p1", "c1")])
+            .when(mock_add_item)
+            .then([item_added_event("p2", "c1")]);
     }
 
     #[test]
     #[should_panic]
     fn it_should_panic_when_action_failed_and_events_were_expected() {
+        let mut mock_add_item = MockDecision::new();
+        mock_add_item
+            .expect_process()
+            .once()
+            .return_once(|_| Err(CartError("Some error".to_string())));
         TestHarness::given([])
-            .when(SampleDecision::new(Err("Some error")))
-            .then([SampleEvent::Deleted("x".into())]);
+            .when(mock_add_item)
+            .then([item_added_event("p2", "c1")]);
     }
 
     #[test]
     fn it_should_assert_expected_error_with_then_err() {
+        let mut mock_add_item = MockDecision::new();
+        mock_add_item
+            .expect_state_query()
+            .once()
+            .return_once(|| cart("c1", []));
+        mock_add_item
+            .expect_process()
+            .once()
+            .return_once(|_| Err(CartError("Some error".to_string())));
         TestHarness::given([])
-            .when(SampleDecision::new(Err("Some error")))
-            .then_err("Some error");
+            .when(mock_add_item)
+            .then_err(CartError("Some error".to_string()));
     }
 
     #[test]
     #[should_panic]
     fn it_should_panic_when_an_error_is_expected() {
-        TestHarness::given(vec![SampleEvent::Created("x".into())])
-            .when(SampleDecision::new(Ok(vec![
-                SampleEvent::Created("x".into()),
-                SampleEvent::Deleted("x".into()),
-            ])))
-            .then_err("Some error");
+        let mut mock_add_item = MockDecision::new();
+        mock_add_item
+            .expect_process()
+            .once()
+            .return_once(|_| Ok(vec![item_added_event("p2", "c1")]));
+
+        TestHarness::given(vec![item_added_event("p1", "c1")])
+            .when(mock_add_item)
+            .then_err(CartError("Some error".to_string()));
     }
 }

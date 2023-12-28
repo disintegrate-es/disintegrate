@@ -1,3 +1,4 @@
+//! A Protobuf serialization and deserialization module.
 use std::marker::PhantomData;
 
 use super::Error;
@@ -5,7 +6,7 @@ use protobuf::Message;
 
 use crate::serde::{Deserializer, Serializer};
 
-/// A serialization and deserialization module using Protobuf.
+/// A struct to serialize and deserialize Protobuf payloads.
 #[derive(Debug, Clone, Copy)]
 pub struct Protobuf<I, O>(PhantomData<I>, PhantomData<O>)
 where

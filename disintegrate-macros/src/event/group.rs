@@ -1,12 +1,12 @@
 use heck::ToSnakeCase;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     bracketed,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     token::Comma,
-    Data, DeriveInput, Field, Ident, Token, Type, Variant,
+    Data, DeriveInput, Error, Field, Ident, Result, Token, Type, Variant,
 };
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl Parse for QueryArgs {
     }
 }
 
-pub fn groups(ast: &DeriveInput) -> Vec<DeriveInput> {
+pub fn groups(ast: &DeriveInput) -> Result<Vec<DeriveInput>> {
     ast.attrs
         .iter()
         .filter(|attr| attr.path().is_ident("group"))
@@ -43,9 +43,12 @@ pub fn groups(ast: &DeriveInput) -> Vec<DeriveInput> {
             let selected_variants: Vec<_> = args.variants;
 
             let event_data = match ast.data {
-                Data::Enum(ref enum_data) => enum_data,
-                _ => panic!("Can only derive from an enum"),
-            };
+                Data::Enum(ref enum_data) => Ok(enum_data),
+                _ => Err(Error::new(
+                    group_ident.span(),
+                    "Can only derive from an enum",
+                )),
+            }?;
 
             let mut group_data = event_data.clone();
             group_data.variants = event_data
@@ -64,12 +67,12 @@ pub fn groups(ast: &DeriveInput) -> Vec<DeriveInput> {
             group.data = Data::Enum(group_data);
             group.attrs = vec![];
 
-            group
+            Ok(group)
         })
         .collect()
 }
 
-pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> TokenStream2 {
+pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> Result<TokenStream> {
     let mut group = group.clone();
     let group_ident = &group.ident;
     let parent_ident = &parent.ident;
@@ -77,9 +80,12 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> TokenStream2 {
     let error = format_ident!("{group_ident}ConvertError");
 
     let group_data = match group.data {
-        Data::Enum(ref mut enum_data) => enum_data,
-        _ => panic!("Can only derive from an enum"),
-    };
+        Data::Enum(ref mut enum_data) => Ok(enum_data),
+        _ => Err(Error::new(
+            group_ident.span(),
+            "Can only derive from an enum",
+        )),
+    }?;
 
     group_data
         .variants
@@ -92,7 +98,7 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> TokenStream2 {
             syn::Fields::Unit => (),
         });
 
-    let pats: Vec<TokenStream2> = group_data
+    let pats: Vec<TokenStream> = group_data
         .variants
         .iter()
         .map(variant_to_unary_pat)
@@ -104,14 +110,14 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> TokenStream2 {
 
     let try_from_event_arms = pats
         .iter()
-        .map(|pat| quote!(#parent_ident::#pat => Ok(#group_ident::#pat)));
+        .map(|pat| quote!(#parent_ident::#pat => std::result::Result::Ok(#group_ident::#pat)));
 
     let vis = &group.vis;
     let (_group_impl, group_ty, _group_where) = group.generics.split_for_impl();
 
     let (event_impl, event_ty, event_where) = parent.generics.split_for_impl();
 
-    quote! {
+    Ok(quote! {
         #[derive(Clone, Debug, PartialEq, Eq)]
         #group
 
@@ -139,17 +145,17 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> TokenStream2 {
         impl #event_impl std::convert::TryFrom<#parent_ident #event_ty> for #group_ident #group_ty #event_where {
             type Error = #error;
 
-            fn try_from(parent: #parent_ident #event_ty) -> Result<Self, Self::Error> {
+            fn try_from(parent: #parent_ident #event_ty) -> std::result::Result<Self, Self::Error> {
                 match parent {
                     #(#try_from_event_arms),*,
-                    _ => Err(#error)
+                    _ => std::result::Result::Err(#error)
                 }
             }
         }
-    }
+    })
 }
 
-fn variant_to_unary_pat(variant: &Variant) -> TokenStream2 {
+fn variant_to_unary_pat(variant: &Variant) -> TokenStream {
     let ident = &variant.ident;
 
     match &variant.fields {

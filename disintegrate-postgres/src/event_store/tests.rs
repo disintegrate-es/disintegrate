@@ -3,24 +3,29 @@ use crate::{Error, PgEventStore};
 use disintegrate::{domain_identifiers, query, DomainIdentifierSet, Event};
 use disintegrate::{EventSchema, EventStore};
 use disintegrate_serde::serde::json::Json;
-use disintegrate_serde::Serializer;
+use disintegrate_serde::{Deserializer, Serializer};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event_type", rename_all = "snake_case")]
 enum ShoppingCartEvent {
-    Added {
-        product_id: String,
-        cart_id: String,
-        quantity: i64,
-    },
-    Removed {
-        product_id: String,
-        cart_id: String,
-        quantity: i64,
-    },
+    Added { product_id: String, cart_id: String },
+    Removed { product_id: String, cart_id: String },
+}
+fn added_event(product_id: &str, cart_id: &str) -> ShoppingCartEvent {
+    ShoppingCartEvent::Added {
+        product_id: product_id.to_string(),
+        cart_id: cart_id.to_string(),
+    }
+}
+fn removed_event(product_id: &str, cart_id: &str) -> ShoppingCartEvent {
+    ShoppingCartEvent::Removed {
+        product_id: product_id.to_string(),
+        cart_id: cart_id.to_string(),
+    }
 }
 
 impl Event for ShoppingCartEvent {
@@ -60,26 +65,10 @@ async fn it_queries_events(pool: PgPool) {
     .unwrap();
 
     let events = vec![
-        ShoppingCartEvent::Added {
-            product_id: "product_1".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 5,
-        },
-        ShoppingCartEvent::Removed {
-            product_id: "product_1".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 1,
-        },
-        ShoppingCartEvent::Added {
-            product_id: "product_2".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 5,
-        },
-        ShoppingCartEvent::Added {
-            product_id: "product_2".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 1,
-        },
+        added_event("product_1", "cart_1"),
+        removed_event("product_1", "cart_1"),
+        added_event("product_2", "cart_1"),
+        added_event("product_2", "cart_1"),
     ];
     insert_events(&pool, &events).await;
 
@@ -92,31 +81,51 @@ async fn it_queries_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_appends_events(pool: PgPool) {
-    let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default())
-            .await
-            .unwrap();
-    let events: Vec<ShoppingCartEvent> = vec![ShoppingCartEvent::Added {
-        product_id: "product_1".to_string(),
-        cart_id: "cart_1".to_string(),
-        quantity: 1,
-    }];
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+    let events: Vec<ShoppingCartEvent> = vec![
+        added_event("product_1", "cart_1"),
+        removed_event("product_2", "cart_1"),
+    ];
 
-    let query = query!(
-        ShoppingCartEvent,
-            (product_id == "product_1") or
-            (cart_id == "cart_1")
+    let query = query!(ShoppingCartEvent, cart_id == "cart_1");
+
+    event_store.append(events, query.clone(), 0).await.unwrap();
+
+    let stored_events = sqlx::query("SELECT event_id, event_type, payload FROM event")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored_events.len(), 2);
+    assert_event_row(
+        stored_events.get(0).unwrap(),
+        1,
+        "ShoppingCartAdded",
+        added_event("product_1", "cart_1"),
     );
+    assert_event_row(
+        stored_events.get(1).unwrap(),
+        2,
+        "ShoppingCartRemoved",
+        removed_event("product_2", "cart_1"),
+    );
+}
 
-    let result = event_store.append(events, query, 0).await.unwrap();
-
-    assert_eq!(result.len(), 1);
-
-    let persisted_event = result.first().unwrap();
-    assert_eq!(persisted_event.name(), "ShoppingCartAdded");
+fn assert_event_row(row: &PgRow, event_id: i64, event_type: &str, payload: ShoppingCartEvent) {
+    let stored_event_id: i64 = row.get(0);
+    assert_eq!(stored_event_id, event_id);
+    let stored_event_type: String = row.get(1);
+    assert_eq!(stored_event_type, event_type);
+    let stored_payload: Vec<u8> = row.get(2);
     assert_eq!(
-        persisted_event.domain_identifiers(),
-        domain_identifiers! {product_id: "product_1", cart_id: "cart_1"},
+        Json::<ShoppingCartEvent>::default()
+            .deserialize(stored_payload)
+            .unwrap(),
+        payload
     );
 }
 
@@ -135,15 +144,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
             (cart_id == "cart_1")
     );
     event_store
-        .append(
-            vec![ShoppingCartEvent::Added {
-                product_id: "product_1".to_string(),
-                cart_id: "cart_1".to_string(),
-                quantity: 1,
-            }],
-            query,
-            0,
-        )
+        .append(vec![added_event("product_1", "cart_1")], query, 0)
         .await
         .unwrap();
     let query = query!(
@@ -152,15 +153,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
             (cart_id == "cart_1")
     );
     let result = event_store
-        .append(
-            vec![ShoppingCartEvent::Removed {
-                product_id: "product_1".to_string(),
-                cart_id: "cart_1".to_string(),
-                quantity: 1,
-            }],
-            query,
-            0,
-        )
+        .append(vec![removed_event("product_1", "cart_1")], query, 0)
         .await;
     assert!(matches!(result, Err(Error::Concurrency)));
 }
@@ -176,16 +169,8 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
     .await
     .unwrap();
     let events = vec![
-        ShoppingCartEvent::Added {
-            product_id: "product_1".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 2,
-        },
-        ShoppingCartEvent::Removed {
-            product_id: "product_1".to_string(),
-            cart_id: "cart_1".to_string(),
-            quantity: 1,
-        },
+        added_event("product_1", "cart_1"),
+        removed_event("product_1", "cart_1"),
     ];
     insert_events(&pool, &events).await;
 
@@ -214,11 +199,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
 
     let _result = event_store
         .append(
-            vec![ShoppingCartEvent::Removed {
-                product_id: "product_1".to_string(),
-                cart_id: "cart_1".to_string(),
-                quantity: 1,
-            }],
+            vec![removed_event("product_1", "cart_1")],
             query_1,
             query_1_result.last().unwrap().id(),
         )
@@ -227,11 +208,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
 
     let result = event_store
         .append(
-            vec![ShoppingCartEvent::Removed {
-                product_id: "product_1".to_string(),
-                cart_id: "cart_1".to_string(),
-                quantity: 1,
-            }],
+            vec![removed_event("product_1", "cart_1")],
             query_2,
             query_2_result.last().unwrap().id(),
         )

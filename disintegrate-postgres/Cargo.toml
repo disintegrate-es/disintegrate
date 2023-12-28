@@ -1,7 +1,7 @@
 [package]
 name = "disintegrate-postgres"
 description = "Disintegrate PostgresDB implementation. Not for direct use. Refer to the `disintegrate` crate for details."
-version = "0.5.0"
+version = "0.6.0"
 license.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,18 +13,21 @@ default = []
 listener = ["dep:tokio", "dep:tokio-util"]
 
 [dependencies]
-disintegrate = { version = "0.5.0", path = "../disintegrate" }
-disintegrate-serde = { version = "0.2.0", path = "../disintegrate-serde" }
-disintegrate-macros = { version = "0.4.0", path = "../disintegrate-macros" }
+disintegrate = { version = "0.6.0", path = "../disintegrate" }
+disintegrate-serde = { version = "0.2.1", path = "../disintegrate-serde" }
+disintegrate-macros = { version = "0.6.0", path = "../disintegrate-macros" }
 serde = "1.0.190"
 serde_json = "1.0.108"
-sqlx = { version = "0.7.2", features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.7.2", features = ["postgres", "runtime-tokio-rustls", "uuid"] }
 async-trait = "0.1.74"
 futures = "0.3.29"
 async-stream = "0.3.5"
 thiserror = "1.0.50"
 tokio = {version = "1.29.1", features = ["macros"], optional = true}
-tokio-util = {version = "0.7.8", optional = true}
+tokio-util = {version = "0.7.10", optional = true}
+uuid = { version = "1.6.1", features = ["v3"] }
+md-5 = "0.10.6"
+paste = "1.0.14"
 
 [dev-dependencies]
-disintegrate-serde = { version = "0.2.0", path = "../disintegrate-serde", features = ["json"] }
+disintegrate-serde = { version = "0.2.1", path = "../disintegrate-serde", features = ["json"] }

@@ -18,7 +18,7 @@ pub enum Error {
     Conversion,
 }
 
-/// The `Serializer` trait defines the behavior for serializing values of type `T`.
+/// Defines the behavior for serializing values of type `T`.
 pub trait Serializer<T> {
     /// Serializes a value of type `T` into a byte vector.
     ///
@@ -32,7 +32,7 @@ pub trait Serializer<T> {
     fn serialize(&self, value: T) -> Vec<u8>;
 }
 
-/// The `Deserializer` trait defines the behavior for deserializing values of type `T`.
+/// Defines the behavior for deserializing values of type `T`.
 pub trait Deserializer<T> {
     /// Deserializes a byte vector into a value of type `T`.
     ///
@@ -46,7 +46,7 @@ pub trait Deserializer<T> {
     fn deserialize(&self, data: Vec<u8>) -> Result<T, Error>;
 }
 
-/// The `Serde` trait combines the `Serializer` and `Deserializer` traits for convenience.
+/// Combines the `Serializer` and `Deserializer` traits for convenience.
 pub trait Serde<T>: Serializer<T> + Deserializer<T> {}
 
 impl<K, T> Serde<T> for K where K: Serializer<T> + Deserializer<T> {}

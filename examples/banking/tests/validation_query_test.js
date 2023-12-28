@@ -17,8 +17,8 @@ function buildAmountPayload(amount){
     });
 }
 
-function requestOpenAccount(id, amount) {
-    return http.post(`${serverUrl}/account/${id}/open`, buildAmountPayload(amount), CONFIG);
+function requestOpenAccount(id) {
+    return http.post(`${serverUrl}/account/${id}/open`, params=CONFIG);
 }
 
 
@@ -37,7 +37,8 @@ function requestTransfer(id, beneficiary_id, amount) {
 export function setup() {
    // Register accounts 
    for(let i = 1; i <= USERS; i ++){
-   	requestOpenAccount(`account_${i}`, 100);
+   	requestOpenAccount(`account_${i}`);
+   	requestDeposit(`account_${i}`, 100);
    }
 }
 
