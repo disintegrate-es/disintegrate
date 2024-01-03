@@ -5,13 +5,19 @@
 //!
 //! The PersistedEvent struct wraps an event and contains an ID assigned by the event store. It represents
 //! an event that has been persisted in the event store.
-use crate::domain_identifier::DomainIdentifierSet;
+use crate::{domain_identifier::DomainIdentifierSet, Identifier, IdentifierType};
 use std::ops::Deref;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct DomainIdentifierInfo {
+    pub ident: Identifier,
+    pub type_info: IdentifierType,
+}
 
 #[derive(Debug, Clone)]
 pub struct EventSchema {
     pub types: &'static [&'static str],
-    pub domain_identifiers: &'static [&'static str],
+    pub domain_identifiers: &'static [&'static DomainIdentifierInfo],
 }
 
 /// Represents an event in the event store.

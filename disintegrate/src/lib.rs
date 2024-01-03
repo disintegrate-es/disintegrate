@@ -19,11 +19,11 @@ pub use crate::decision::{
 #[doc(inline)]
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
 #[doc(inline)]
-pub use crate::event::{Event, EventSchema, PersistedEvent};
+pub use crate::event::{DomainIdentifierInfo, Event, EventSchema, PersistedEvent};
 #[doc(inline)]
 pub use crate::event_store::EventStore;
 #[doc(inline)]
-pub use crate::identifier::Identifier;
+pub use crate::identifier::{Identifier, IdentifierType, IdentifierValue, IntoIdentifierValue};
 #[doc(inline)]
 pub use crate::listener::EventListener;
 #[doc(inline)]

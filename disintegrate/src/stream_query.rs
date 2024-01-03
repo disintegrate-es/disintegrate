@@ -14,7 +14,7 @@
 use core::fmt::Debug;
 use std::marker::PhantomData;
 
-use crate::{identifier::Identifier, Event};
+use crate::{identifier::IntoIdentifierValue, Event, Identifier, IdentifierValue};
 
 /// Represents a query for filtering event streams.
 ///
@@ -103,10 +103,10 @@ pub fn exclude_events(names: &'static [&'static str]) -> StreamFilter {
 }
 
 /// Creates a filter that checks for equality between an identifier and a value.
-pub fn eq(ident: Identifier, value: impl ToString) -> StreamFilter {
+pub fn eq(ident: Identifier, value: impl IntoIdentifierValue) -> StreamFilter {
     StreamFilter::Eq {
         ident,
-        value: value.to_string(),
+        value: value.into_identifier_value(),
     }
 }
 
@@ -157,7 +157,7 @@ macro_rules! event_types{
             use $crate::Event;
             const TYPES: &[&str] = {
                 const FILTER_ARG: &[&str] = &[$(stringify!($events),)+];
-                if !$crate::utils::include(<$event_ty>::SCHEMA.types, FILTER_ARG) {
+                   if !$crate::utils::include(<$event_ty>::SCHEMA.types, FILTER_ARG) {
                     panic!("one or more of the specified events do not exist");
                 }
                 FILTER_ARG
@@ -183,12 +183,17 @@ macro_rules! filter {
             use $crate::Event;
             const _: &[&str] = {
                 const FILTER_ARG: &[&str] = &[stringify!($ident)];
-                if !$crate::utils::include(<$event_ty>::SCHEMA.domain_identifiers, FILTER_ARG) {
-                    panic!("Invalid eq filter: specified domain identifier does not exist");
+                const DOMAIN_IDENTIFIERS: &[&$crate::DomainIdentifierInfo] = <$event_ty>::SCHEMA.domain_identifiers;
+                const DOMAIN_IDENTIFIERS_IDENTS: &[&str] = &$crate::const_slice_iter!(DOMAIN_IDENTIFIERS, const fn map(item: &$crate::DomainIdentifierInfo) -> &str {
+                    item.ident.into_inner()
+                });
+
+                if !$crate::utils::include(DOMAIN_IDENTIFIERS_IDENTS, FILTER_ARG) {
+                    panic!("Invalid eq filter: the specified domain identifier does not exist");
                 }
                 FILTER_ARG
             };
-            $crate::stream_query::eq($crate::ident!(#$ident), &$value)
+            $crate::stream_query::eq($crate::ident!(#$ident), $value.clone())
         }
     };
     ($event_ty:ty, ($($h:tt)+) and ($($t:tt)+)) => {
@@ -228,7 +233,7 @@ pub enum StreamFilter {
         /// The identifier to compare.
         ident: Identifier,
         /// The value to compare against.
-        value: String,
+        value: IdentifierValue,
     },
     /// Performs a logical AND operation between two filters.
     And {

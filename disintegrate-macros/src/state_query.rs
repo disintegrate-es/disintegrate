@@ -150,7 +150,7 @@ fn impl_state_filters(identifiers_fields: &[&Ident]) -> Option<TokenStream> {
         let first = identifiers_fields[0];
         let rest = impl_state_filters(&identifiers_fields[1..]);
         Some(quote! {
-            ( #first == self.#first ) or ( #rest )
+            ( #first == self.#first ) and ( #rest )
         })
     }
 }

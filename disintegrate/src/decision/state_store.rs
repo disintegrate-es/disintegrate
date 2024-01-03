@@ -1,4 +1,5 @@
 //! State Store provides components for retrieving decision states and persisting decision changes.
+use futures::TryStreamExt;
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::state::{MultiState, MultiStateSnapshot, StatePart};
@@ -7,7 +8,6 @@ use crate::EventStore;
 use crate::StateQuery;
 use crate::{Event, PersistedEvent, StreamQuery};
 use async_trait::async_trait;
-use futures::TryStreamExt;
 use std::error::Error as StdError;
 use std::ops::Deref;
 
@@ -27,9 +27,8 @@ pub trait DecisionStateStore<S, E: Event + Clone> {
     ///
     /// # Returns
     ///
-    /// A `Result` containing a tuple with the loaded state and its version, or an
-    /// error if the load fails.
-    async fn load(&self, state_query: S) -> Result<(S, i64), BoxDynError>;
+    /// the loaded state, or an error if the load fails.
+    async fn load(&self, state_query: S) -> Result<S, BoxDynError>;
     /// Persists the decision changes.
     ///
     /// # Parameters
@@ -122,6 +121,21 @@ impl<ES: Clone, SN: SnapshotConfig + Clone> EventSourcedDecisionStateStore<ES, S
             snapshot,
         }
     }
+
+    async fn mutate_state<S, E>(&self, mut state_query: S) -> Result<S, BoxDynError>
+    where
+        ES: EventStore<E> + Clone + Sync + Send,
+        <ES as EventStore<E>>::Error: StdError + Send + Sync + 'static,
+        E: Event + Clone + Send + Sync + 'static,
+        S: MultiState<E> + Send + Sync + 'static,
+    {
+        let query = state_query.query_all();
+        let mut event_stream = self.event_store.stream(&query);
+        while let Some(event) = event_stream.try_next().await? {
+            state_query.mutate_all(event);
+        }
+        Ok(state_query)
+    }
 }
 
 #[async_trait]
@@ -132,21 +146,8 @@ where
     E: Event + Clone + Send + Sync + 'static,
     S: MultiState<E> + Send + Sync + 'static,
 {
-    async fn load(&self, state_query: S) -> Result<(S, i64), BoxDynError> {
-        let initial_version = state_query.version();
-        let (state, version) = self
-            .event_store
-            .stream(&state_query.query_all())
-            .try_fold(
-                (state_query, initial_version),
-                |(mut state, version), evt| async move {
-                    let applied_event_id = evt.id();
-                    state.mutate_all(evt);
-                    Ok((state, version.max(applied_event_id)))
-                },
-            )
-            .await?;
-        Ok((state, version))
+    async fn load(&self, state_query: S) -> Result<S, BoxDynError> {
+        self.mutate_state(state_query).await
     }
 
     async fn persist(
@@ -173,22 +174,11 @@ where
     E: Event + Clone + Send + Sync + 'static,
     S: MultiState<E> + MultiStateSnapshot<B> + Send + Sync + 'static,
 {
-    async fn load(&self, mut state_query: S) -> Result<(S, i64), BoxDynError> {
-        let version = state_query.load_all(&self.snapshot.backend).await;
-        let (state, version) = self
-            .event_store
-            .stream(&state_query.query_all())
-            .try_fold(
-                (state_query, version),
-                |(mut state, version), evt| async move {
-                    let applied_event_id = evt.id();
-                    state.mutate_all(evt);
-                    Ok((state, version.max(applied_event_id)))
-                },
-            )
-            .await?;
+    async fn load(&self, mut state_query: S) -> Result<S, BoxDynError> {
+        state_query.load_all(&self.snapshot.backend).await;
+        let state = self.mutate_state(state_query).await?;
         state.store_all(&self.snapshot.backend).await?;
-        Ok((state, version))
+        Ok(state)
     }
 
     async fn persist(
@@ -211,7 +201,7 @@ mod test {
     use futures::executor::block_on;
 
     use super::*;
-    use crate::{utils::tests::*, IntoState, IntoStatePart};
+    use crate::{utils::tests::*, IntoState, IntoStatePart, MultiState};
 
     #[test]
     fn it_loads_query_state() {
@@ -228,9 +218,9 @@ mod test {
         let event_store = MockEventStore::new(mock_store);
         let state_store = EventSourcedDecisionStateStore::new(event_store, NoSnapshot);
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let ((cart1, cart2), version) = block_on(state_store.load(state)).unwrap();
-
-        assert_eq!(version, 3);
+        let state = block_on(state_store.load(state)).unwrap();
+        assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 3);
+        let (cart1, cart2) = state;
         assert_eq!(cart1.version(), 2);
         assert_eq!(cart1.applied_events(), 2);
         assert_eq!(cart1.into_state(), cart("c1", []));
@@ -290,9 +280,10 @@ mod test {
         let state_store =
             EventSourcedDecisionStateStore::new(event_store, WithSnapshot::new(snapshotter));
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let ((cart1, cart2), version) = block_on(state_store.load(state)).unwrap();
+        let state = block_on(state_store.load(state)).unwrap();
 
-        assert_eq!(version, 2);
+        assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 2);
+        let (cart1, cart2) = state;
         assert_eq!(cart1.version(), 1);
         assert_eq!(cart1.applied_events(), 1);
         assert_eq!(
@@ -336,8 +327,8 @@ mod test {
         let state_store =
             EventSourcedDecisionStateStore::new(event_store, WithSnapshot::new(snapshotter));
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let (_, version) = block_on(state_store.load(state)).unwrap();
+        let state = block_on(state_store.load(state)).unwrap();
 
-        assert_eq!(version, 5);
+        assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 5);
     }
 }

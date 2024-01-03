@@ -12,7 +12,9 @@ pub enum UnsubscriptionError {
 #[derive(Debug, Clone, StateQuery, Default, Serialize, Deserialize)]
 #[state_query(UnsubscriptionEvent)]
 pub struct Unsubscription {
+    #[id]
     course_id: CourseId,
+    #[id]
     student_id: StudentId,
     student_subscribed: bool,
 }

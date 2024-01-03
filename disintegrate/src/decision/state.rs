@@ -313,7 +313,7 @@ fn matches_filter<E: Event>(event: &PersistedEvent<E>, filter: &StreamFilter) ->
             .domain_identifiers()
             .get(ident)
             .map(|v| v == value)
-            .unwrap_or_default(),
+            .unwrap_or(true),
         StreamFilter::And { l, r } => matches_filter(event, l) && matches_filter(event, r),
         StreamFilter::Or { l, r } => matches_filter(event, l) || matches_filter(event, r),
         StreamFilter::Origin { id } => event.id() > *id,

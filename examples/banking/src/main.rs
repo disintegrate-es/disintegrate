@@ -58,22 +58,20 @@ struct Amount {
 #[post("/account/{id}/open")]
 async fn open_account(
     decision_maker: Data<DecisionMaker>,
-    id: Path<String>,
+    id: Path<i64>,
 ) -> Result<&'static str, Error> {
-    decision_maker
-        .make(OpenAccount::new(id.to_string()))
-        .await?;
+    decision_maker.make(OpenAccount::new(*id)).await?;
     Ok("success!")
 }
 
 #[post("/account/{id}/deposit")]
 async fn deposit(
     decision_maker: Data<DecisionMaker>,
-    id: Path<String>,
+    id: Path<i64>,
     data: Json<Amount>,
 ) -> Result<&'static str, Error> {
     decision_maker
-        .make(DepositAmount::new(id.to_string(), data.amount))
+        .make(DepositAmount::new(*id, data.amount))
         .await?;
     Ok("success!")
 }
@@ -81,11 +79,11 @@ async fn deposit(
 #[post("/account/{id}/withdraw")]
 async fn withdraw(
     decision_maker: Data<DecisionMaker>,
-    id: Path<String>,
+    id: Path<i64>,
     data: Json<Amount>,
 ) -> Result<&'static str, Error> {
     decision_maker
-        .make(WithdrawAmount::new(id.to_string(), data.amount))
+        .make(WithdrawAmount::new(*id, data.amount))
         .await?;
     Ok("success!")
 }
@@ -93,26 +91,20 @@ async fn withdraw(
 #[post("/account/{id}/close")]
 async fn close_account(
     decision_maker: Data<DecisionMaker>,
-    id: Path<String>,
+    id: Path<i64>,
 ) -> Result<&'static str, Error> {
-    decision_maker
-        .make(CloseAccount::new(id.to_string()))
-        .await?;
+    decision_maker.make(CloseAccount::new(*id)).await?;
     Ok("success!")
 }
 
 #[post("account/{id}/transfer/{beneficiary_id}")]
 async fn transfer(
     decision_maker: Data<DecisionMaker>,
-    accounts: Path<(String, String)>,
+    accounts: Path<(i64, i64)>,
     data: Json<Amount>,
 ) -> Result<&'static str, Error> {
     decision_maker
-        .make(SendMoney::new(
-            accounts.0.to_string(),
-            accounts.1.to_string(),
-            data.amount,
-        ))
+        .make(SendMoney::new(accounts.0, accounts.1, data.amount))
         .await?;
     Ok("success!")
 }

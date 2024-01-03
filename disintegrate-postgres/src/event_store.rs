@@ -7,6 +7,7 @@ mod query_builder;
 #[cfg(test)]
 mod tests;
 
+use futures::stream::BoxStream;
 use insert_builder::InsertBuilder;
 use query_builder::QueryBuilder;
 use sqlx::Row;
@@ -18,10 +19,10 @@ use crate::Error;
 use async_stream::stream;
 use async_trait::async_trait;
 use disintegrate::stream_query::StreamQuery;
-use disintegrate::EventStore;
+use disintegrate::{DomainIdentifierInfo, EventStore};
 use disintegrate::{Event, PersistedEvent};
 use disintegrate_serde::Serde;
-use futures::stream::BoxStream;
+
 use futures::StreamExt;
 use sqlx::PgPool;
 
@@ -90,7 +91,7 @@ where
         query: &'a StreamQuery<QE>,
     ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
     where
-        QE: TryFrom<E> + Event + Send + Sync + Clone,
+        QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
         stream! {
@@ -124,7 +125,7 @@ where
     ///
     /// * `events` - A vector of events to be appended.
     /// * `query` - The stream query specifying the criteria for filtering events.
-    /// * `last_event_id` - The ID of the last consumed event.
+    /// * `version` - The ID of the last consumed event.
     ///
     /// # Returns
     ///
@@ -134,14 +135,14 @@ where
         &self,
         events: Vec<E>,
         query: StreamQuery<QE>,
-        last_event_id: i64,
+        version: i64,
     ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
     where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
         let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids = Vec::with_capacity(events.len());
+        let mut persisted_events_ids: Vec<i64> = Vec::with_capacity(events.len());
         for event in events {
             let mut sequence_insert =
                 InsertBuilder::new(&event, "event_sequence").returning("event_id");
@@ -150,21 +151,23 @@ where
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
-        let mut update_sql = QueryBuilder::new(
-            query,
-            "UPDATE event_sequence SET consumed = consumed + 1 WHERE ",
-        )
-        .with_origin(last_event_id)
-        .with_last_event_id(
-            persisted_events_ids
-                .last()
-                .copied()
-                .unwrap_or(last_event_id),
-        )
-        .with_event_ids(&persisted_events_ids);
-
+        let last_event_id = persisted_events_ids.last().copied().unwrap_or(version);
+        let persisted_event_ids = persisted_events_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         let mut tx = self.pool.begin().await?;
-        update_sql
+        let mut consume_sql = QueryBuilder::new(
+            query.change_origin(version),
+            format!(r#"UPDATE event_sequence SET consumed = consumed + 1, committed = (event_id = ANY('{{{persisted_event_ids}}}'))
+                       WHERE event_id IN ({persisted_event_ids}) 
+                       OR ((consumed = 0 OR committed = true) 
+                       AND (event_id <= {last_event_id} AND "#).as_str(),
+        )
+        .end_with("))");
+
+        consume_sql
             .build()
             .execute(&mut *tx)
             .await
@@ -198,10 +201,15 @@ pub async fn setup<E: Event>(pool: &PgPool) -> Result<(), Error> {
     sqlx::query(include_str!("event_store/sql/idx_event_sequence_type.sql"))
         .execute(pool)
         .await?;
+    sqlx::query(include_str!(
+        "event_store/sql/idx_event_sequence_committed.sql"
+    ))
+    .execute(pool)
+    .await?;
 
     for domain_identifier in E::SCHEMA.domain_identifiers {
-        if RESERVED_NAMES.contains(domain_identifier) {
-            panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.");
+        if RESERVED_NAMES.contains(&domain_identifier.ident) {
+            panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.", domain_identifier = domain_identifier.ident);
         }
         add_domain_identifier_column(pool, "event", domain_identifier).await?;
         add_domain_identifier_column(pool, "event_sequence", domain_identifier).await?;
@@ -222,16 +230,22 @@ fn map_update_event_id_err(err: sqlx::Error) -> Error {
 async fn add_domain_identifier_column(
     pool: &PgPool,
     table: &str,
-    domain_identifier: &str,
+    domain_identifier: &DomainIdentifierInfo,
 ) -> Result<(), Error> {
+    let column_name = domain_identifier.ident;
+    let sql_type = match domain_identifier.type_info {
+        disintegrate::IdentifierType::String => "TEXT",
+        disintegrate::IdentifierType::i64 => "BIGSERIAL",
+        disintegrate::IdentifierType::Uuid => "UUID",
+    };
     sqlx::query(&format!(
-        "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {domain_identifier} TEXT"
+        "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
     ))
     .execute(pool)
     .await?;
 
     sqlx::query(&format!(
-        "CREATE INDEX IF NOT EXISTS idx_{table}_{domain_identifier} ON {table}({domain_identifier})"
+        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table}({column_name})"
     ))
     .execute(pool)
     .await?;

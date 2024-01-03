@@ -18,7 +18,7 @@ function buildAmountPayload(amount){
 }
 
 function requestOpenAccount(id) {
-    return http.post(`${serverUrl}/account/${id}/open`, params=CONFIG);
+    return http.post(`${serverUrl}/account/${id}/open`, null, CONFIG);
 }
 
 
@@ -37,20 +37,19 @@ function requestTransfer(id, beneficiary_id, amount) {
 export function setup() {
    // Register accounts 
    for(let i = 1; i <= USERS; i ++){
-   	requestOpenAccount(`account_${i}`);
-   	requestDeposit(`account_${i}`, 100);
+   	requestOpenAccount(i);
+   	requestDeposit(i, 100);
    }
 }
 
 export default function (data) {
     let id = exec.vu.idInTest;
-    let account = `account_${id}`;
 
     let res;
     if(id === 1){
-    	res = requestWithdraw(account, 1);
+    	res = requestWithdraw(id, 1);
     }else{
-    	res = requestTransfer(account, 'account_1' , 20);
+    	res = requestTransfer(id, 1, 20);
     }
 
     check(res, {

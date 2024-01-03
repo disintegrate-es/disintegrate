@@ -15,7 +15,6 @@ use crate::{
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use std::error::Error as StdError;
-
 /// An event store.
 ///
 /// This trait provides methods for streaming events and appending events to the event store.

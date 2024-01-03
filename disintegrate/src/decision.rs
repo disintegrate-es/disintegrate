@@ -107,14 +107,15 @@ impl<SS> DecisionMaker<SS> {
         SS: DecisionStateStore<DS, E>,
         D: Decision<StateQuery = S, Event = E>,
         S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<S, Target = DS>,
-        DS: Send + Sync + Serialize + DeserializeOwned + IntoState<S>,
+        DS: Send + Sync + Serialize + DeserializeOwned + IntoState<S> + MultiState<E>,
         <D as Decision>::Error: 'static,
     {
-        let (state, version) = self
+        let state = self
             .state_store
             .load(decision.state_query().into_state_part())
             .await
             .map_err(Error::StateStore)?;
+        let version = state.version();
         let inner_state = state.into_state();
         let changes = decision.process(&inner_state).map_err(Error::Domain)?;
         let events = self
