@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "assert2",
  "async-stream",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate-macros"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "disintegrate",
  "heck",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate-postgres"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -826,7 +826,7 @@ dependencies = [
 
 [[package]]
 name = "disintegrate-serde"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "apache-avro",
  "prost",

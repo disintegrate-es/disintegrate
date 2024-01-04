@@ -74,8 +74,8 @@ To add Disintegrate to your project, follow these steps:
 
     ```toml
     [dependencies]
-    disintegrate = { version = "0.7.0", features = ["macros", "serde-prost"] }
-    disintegrate-postgres = { version = "0.7.0", features = ["listener"] }
+    disintegrate = { version = "0.7.1", features = ["macros", "serde-prost"] }
+    disintegrate-postgres = { version = "0.7.1", features = ["listener"] }
     ```
 
     * The macros feature enables the use of derive macros to simplify events implementations.
