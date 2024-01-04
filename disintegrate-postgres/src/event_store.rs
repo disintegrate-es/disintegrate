@@ -235,7 +235,7 @@ async fn add_domain_identifier_column(
     let column_name = domain_identifier.ident;
     let sql_type = match domain_identifier.type_info {
         disintegrate::IdentifierType::String => "TEXT",
-        disintegrate::IdentifierType::i64 => "BIGSERIAL",
+        disintegrate::IdentifierType::i64 => "BIGINT",
         disintegrate::IdentifierType::Uuid => "UUID",
     };
     sqlx::query(&format!(
