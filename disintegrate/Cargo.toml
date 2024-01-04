@@ -20,7 +20,7 @@ serde-protobuf = ["serde", "disintegrate-serde/protobuf"]
 async-trait = "0.1.74"
 futures = "0.3.29"
 lazy_static = "1.4.0"
-regex = "1.9.4"
+regex = "1.10.2"
 serde = { version = "1.0.190", features = ["derive"] }
 disintegrate-serde = { version = "0.7.0", path = "../disintegrate-serde", optional = true }
 disintegrate-macros = { version = "0.7.0", path = "../disintegrate-macros", optional = true }
