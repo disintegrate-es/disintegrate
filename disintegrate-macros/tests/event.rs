@@ -1,4 +1,4 @@
-use disintegrate::{ident, Event};
+use disintegrate::{ident, DomainIdentifierInfo, Event, IdentifierType, IntoIdentifierValue};
 
 #[derive(Event, Clone, Debug, PartialEq, Eq)]
 struct UserUpdated {
@@ -52,7 +52,10 @@ fn it_returns_correct_domain_identifiers() {
     };
 
     let domain_identifiers = enum_struct_variant_event.domain_identifiers();
-    assert_eq!(domain_identifiers.get(&ident!(#user_id)), Some(&user_id));
+    assert_eq!(
+        domain_identifiers.get(&ident!(#user_id)),
+        Some(&user_id.clone().into_identifier_value())
+    );
 
     let enum_unit_variant_event = DomainEvent::UserUpdated(UserUpdated {
         user_id: user_id.clone(),
@@ -60,7 +63,10 @@ fn it_returns_correct_domain_identifiers() {
     });
 
     let domain_identifiers = enum_unit_variant_event.domain_identifiers();
-    assert_eq!(domain_identifiers.get(&ident!(#user_id)), Some(&user_id));
+    assert_eq!(
+        domain_identifiers.get(&ident!(#user_id)),
+        Some(&user_id.into_identifier_value())
+    );
 }
 
 #[test]
@@ -105,12 +111,33 @@ fn it_generates_event_groups() {
 
 #[test]
 fn it_generates_domain_identifiers_schema_set() {
-    assert_eq!(OrderEvent::SCHEMA.domain_identifiers, &["order_id"]);
+    assert_eq!(
+        OrderEvent::SCHEMA.domain_identifiers,
+        &[&DomainIdentifierInfo {
+            ident: ident!(#order_id),
+            type_info: IdentifierType::String
+        }]
+    );
 
-    assert_eq!(UserEvent::SCHEMA.domain_identifiers, &["user_id"]);
+    assert_eq!(
+        UserEvent::SCHEMA.domain_identifiers,
+        &[&DomainIdentifierInfo {
+            ident: ident!(#user_id),
+            type_info: IdentifierType::String
+        }]
+    );
 
     assert_eq!(
         DomainEvent::SCHEMA.domain_identifiers,
-        &["order_id", "user_id"]
+        &[
+            &DomainIdentifierInfo {
+                ident: ident!(#order_id),
+                type_info: IdentifierType::String
+            },
+            &DomainIdentifierInfo {
+                ident: ident!(#user_id),
+                type_info: IdentifierType::String
+            }
+        ]
     );
 }

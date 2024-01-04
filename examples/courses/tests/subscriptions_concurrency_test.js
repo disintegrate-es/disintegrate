@@ -8,7 +8,7 @@ const USERS = 500;
 
 export let options = {
     vus: USERS,
-    duration: '30s',
+    duration: '100s',
 };
 
 const client = new grpc.Client();
@@ -42,9 +42,10 @@ export function setup() {
 export default function (data) {
     client.connect(serverUrl, { plaintext: true });
     const course_id = Math.floor(Math.random() * COURSES) + 1;
+    const student_id = Math.floor(Math.random() * USERS) + 1;
     const subscription = {
         course_id: `course${course_id}`,
-        student_id: `student${exec.vu.idInTest}`,
+        student_id: `student${student_id}`,
     };
     const res = client.invoke('api.Subscription/Subscribe', subscription);
     check(res, { 'student subscribed successfully': (r) => r && r.status === grpc.StatusOK });

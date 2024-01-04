@@ -91,7 +91,13 @@ where
         separated_builder.push_bind_unseparated(self.event.name());
 
         for value in domain_identifiers.values() {
-            separated_builder.push_bind(value.clone());
+            match value {
+                disintegrate::IdentifierValue::String(value) => {
+                    separated_builder.push_bind(value.clone())
+                }
+                disintegrate::IdentifierValue::i64(value) => separated_builder.push_bind(*value),
+                disintegrate::IdentifierValue::Uuid(value) => separated_builder.push_bind(*value),
+            };
         }
 
         if let Some(id) = self.id {
@@ -114,7 +120,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use disintegrate::{domain_identifiers, DomainIdentifierSet, EventSchema};
+    use disintegrate::{
+        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventSchema,
+        IdentifierType,
+    };
     use serde::{Deserialize, Serialize};
     use sqlx::Execute;
 
@@ -138,7 +147,16 @@ mod tests {
     impl Event for ShoppingCartEvent {
         const SCHEMA: EventSchema = EventSchema {
             types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
-            domain_identifiers: &["cart_id", "product_id"],
+            domain_identifiers: &[
+                &DomainIdentifierInfo {
+                    ident: ident!(#cart_id),
+                    type_info: IdentifierType::String,
+                },
+                &DomainIdentifierInfo {
+                    ident: ident!(#product_id),
+                    type_info: IdentifierType::String,
+                },
+            ],
         };
         fn name(&self) -> &'static str {
             match self {

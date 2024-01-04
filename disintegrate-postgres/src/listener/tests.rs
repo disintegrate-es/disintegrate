@@ -2,8 +2,8 @@ use super::*;
 
 use async_trait::async_trait;
 use disintegrate::{
-    domain_identifiers, query, DomainIdentifierSet, EventSchema, EventStore, PersistedEvent,
-    StreamQuery,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, EventSchema,
+    EventStore, IdentifierType, PersistedEvent, StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 
@@ -20,7 +20,16 @@ enum ShoppingCartEvent {
 impl Event for ShoppingCartEvent {
     const SCHEMA: EventSchema = EventSchema {
         types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
-        domain_identifiers: &["cart_id", "product_id"],
+        domain_identifiers: &[
+            &DomainIdentifierInfo {
+                ident: ident!(#cart_id),
+                type_info: IdentifierType::String,
+            },
+            &DomainIdentifierInfo {
+                ident: ident!(#product_id),
+                type_info: IdentifierType::String,
+            },
+        ],
     };
 
     fn name(&self) -> &'static str {

@@ -1,6 +1,9 @@
 use super::insert_builder::InsertBuilder;
 use crate::{Error, PgEventStore};
-use disintegrate::{domain_identifiers, query, DomainIdentifierSet, Event};
+use disintegrate::{
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event,
+    IdentifierType,
+};
 use disintegrate::{EventSchema, EventStore};
 use disintegrate_serde::serde::json::Json;
 use disintegrate_serde::{Deserializer, Serializer};
@@ -31,7 +34,16 @@ fn removed_event(product_id: &str, cart_id: &str) -> ShoppingCartEvent {
 impl Event for ShoppingCartEvent {
     const SCHEMA: EventSchema = EventSchema {
         types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
-        domain_identifiers: &["cart_id", "product_id"],
+        domain_identifiers: &[
+            &DomainIdentifierInfo {
+                ident: ident!(#cart_id),
+                type_info: IdentifierType::String,
+            },
+            &DomainIdentifierInfo {
+                ident: ident!(#product_id),
+                type_info: IdentifierType::String,
+            },
+        ],
     };
     fn name(&self) -> &'static str {
         match self {

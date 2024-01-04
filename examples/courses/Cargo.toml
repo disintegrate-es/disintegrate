@@ -10,8 +10,8 @@ repository.workspace = true
 [dependencies]
 anyhow = "1.0.71"
 async-trait = "0.1.74"
-disintegrate = {version = "0.6.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
-disintegrate-postgres = { version = "0.6.0", path = "../../disintegrate-postgres", features = ["listener"] }
+disintegrate = {version = "0.7.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
+disintegrate-postgres = { version = "0.7.0", path = "../../disintegrate-postgres", features = ["listener"] }
 opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
 opentelemetry-jaeger = { version = "0.18.0", features = ["rt-tokio"] }
 rust_decimal = "1.33.1"

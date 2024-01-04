@@ -8,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-disintegrate = { version = "0.6.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
-disintegrate-postgres = { version = "0.6.0", path = "../../disintegrate-postgres" }
+disintegrate = { version = "0.7.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
+disintegrate-postgres = { version = "0.7.0", path = "../../disintegrate-postgres" }
 tokio = { version = "1.29.1", features = ["macros", "rt-multi-thread", "signal"] }
 serde = { version = "1.0.190", features = ["derive"] }
 thiserror = "1.0.50"

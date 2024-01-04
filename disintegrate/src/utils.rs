@@ -3,13 +3,15 @@
 #[macro_export]
 #[doc(hidden)]
 macro_rules! const_slice_unique {
-    ($a:expr) => {
+    ($ty:ty, $a:expr, $compare:stmt) => {
         &{
-            const A: &[&str] = $crate::const_slice_sort!($a);
-            const LEN: usize = A.len() - disintegrate::utils::count_dup(A);
+            $compare
+            const A: &[$ty] = $crate::const_slice_sort!($ty, $a, $compare);
+            const DUPLICATES: usize = $crate::const_count_dup!(A, $compare);
+            const LEN: usize = A.len() - DUPLICATES;
 
             let mut out: [_; LEN] = if LEN == 0 {
-                unsafe { std::mem::transmute([0u8; std::mem::size_of::<&str>() * LEN]) }
+                unsafe { std::mem::transmute([0u8; std::mem::size_of::<$ty>() * LEN]) }
             } else {
                 [A[0]; LEN]
             };
@@ -17,7 +19,7 @@ macro_rules! const_slice_unique {
             let mut r: usize = 1;
             let mut w: usize = 1;
             while r < A.len() {
-                if !disintegrate::utils::eq(A[r], out[w - 1]) {
+                if compare(A[r], out[w - 1]) != 0 {
                     out[w] = A[r];
                     w += 1;
                 }
@@ -30,14 +32,37 @@ macro_rules! const_slice_unique {
 
 #[macro_export]
 #[doc(hidden)]
+macro_rules! const_count_dup {
+    ($a:expr, $compare:stmt) => {{
+        $compare
+        let mut count = 0;
+        let mut i = 0;
+        let mut j = 1;
+        while i < $a.len() - 1 {
+            while j < $a.len() {
+                if compare($a[i], $a[j]) == 0 {
+                    count += 1;
+                    break;
+                }
+                j += 1;
+            }
+            i += 1;
+            j = i + 1;
+        }
+        count
+    }};
+}
+
+#[macro_export]
+#[doc(hidden)]
 macro_rules! const_slices_concat {
-    ($a:expr, $b:expr) => {
+    ($ty:ty, $a:expr, $b:expr) => {
         &{
-            const A: &[&str] = $a;
-            const B: &[&str] = $b;
+            const A: &[$ty] = $a;
+            const B: &[$ty] = $b;
             let mut out: [_; { A.len() + B.len() }] = if A.len() == 0 && B.len() == 0 {
                 unsafe {
-                    std::mem::transmute([0u8; std::mem::size_of::<&str>() * (A.len() + B.len())])
+                    std::mem::transmute([0u8; std::mem::size_of::<$ty>() * (A.len() + B.len())])
                 }
             } else if A.len() == 0 {
                 [B[0]; { A.len() + B.len() }]
@@ -62,11 +87,12 @@ macro_rules! const_slices_concat {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! const_slice_sort {
-    ($a:expr) => {
+    ($ty:ty, $a:expr, $compare:stmt) => {
         &{
-            const A: &[&str] = $a;
+            $compare
+            const A: &[$ty] = $a;
             let mut out: [_; A.len()] = if A.len() == 0 {
-                unsafe { std::mem::transmute([0u8; std::mem::size_of::<&str>() * A.len()]) }
+                unsafe { std::mem::transmute([0u8; std::mem::size_of::<$ty>() * A.len()]) }
             } else {
                 [A[0]; A.len()]
             };
@@ -75,7 +101,7 @@ macro_rules! const_slice_sort {
             while i < A.len() {
                 out[i] = A[i];
                 let mut j = i;
-                while j > 0 && disintegrate::utils::compare(out[j], out[j - 1]) == -1 {
+                while j > 0 && compare(out[j], out[j - 1]) == -1 {
                     //swap
                     let tmp = out[j];
                     out[j] = out[j - 1];
@@ -88,6 +114,25 @@ macro_rules! const_slice_sort {
             out
         }
     };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! const_slice_iter {
+    ($slice:ident, $map:stmt) => {{
+        $map
+        let mut out: [_; $slice.len()] = if $slice.len() == 0 {
+            unsafe { std::mem::transmute([0u8; std::mem::size_of::<&str>() * $slice.len()]) }
+        } else {
+            [""; $slice.len()]
+        };
+        let mut i = 0;
+        while i < $slice.len() {
+            out[i] = map($slice[i]);
+            i += 1;
+        }
+        out
+    }};
 }
 
 pub const fn include(a: &[&str], b: &[&str]) -> bool {
@@ -104,19 +149,6 @@ pub const fn include(a: &[&str], b: &[&str]) -> bool {
     }
 
     j == b.len()
-}
-
-pub const fn count_dup(slice: &[&str]) -> usize {
-    let mut count = 0;
-    let mut i = 0;
-    while i + 1 < slice.len() {
-        if eq(slice[i], slice[i + 1]) {
-            count += 1;
-        }
-        i += 1;
-    }
-
-    count
 }
 
 pub const fn compare(lhs: &str, rhs: &str) -> i8 {
@@ -179,9 +211,9 @@ pub mod tests {
     use std::{error::Error as StdError, fmt};
 
     use crate::{
-        domain_identifiers, query, BoxDynError, Decision, DomainIdentifierSet, Event, EventSchema,
-        EventStore, PersistedEvent, StateMutate, StatePart, StateQuery, StateSnapshotter,
-        StreamQuery,
+        domain_identifiers, event::DomainIdentifierInfo, ident, query, BoxDynError, Decision,
+        DomainIdentifierSet, Event, EventSchema, EventStore, IdentifierType, PersistedEvent,
+        StateMutate, StatePart, StateQuery, StateSnapshotter, StreamQuery,
     };
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -219,7 +251,16 @@ pub mod tests {
     impl Event for ShoppingCartEvent {
         const SCHEMA: EventSchema = EventSchema {
             types: &["ItemAdded", "ItemRemoved"],
-            domain_identifiers: &["cart_id", "item_id"],
+            domain_identifiers: &[
+                &DomainIdentifierInfo {
+                    ident: ident!(#cart_id),
+                    type_info: IdentifierType::String,
+                },
+                &DomainIdentifierInfo {
+                    ident: ident!(#item_id),
+                    type_info: IdentifierType::String,
+                },
+            ],
         };
         fn name(&self) -> &'static str {
             match self {
@@ -319,7 +360,6 @@ pub mod tests {
             Ok(self.database.append(events, query, last_event_id))
         }
     }
-
     #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
     pub struct Cart {
         pub cart_id: String,

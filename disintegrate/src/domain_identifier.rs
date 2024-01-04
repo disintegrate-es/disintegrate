@@ -7,7 +7,7 @@
 //! Creating a `DomainIdentifierSet` with two domain identifiers:
 //!
 //! ```
-//! use disintegrate::{DomainIdentifier, DomainIdentifierSet, Identifier, domain_identifiers};
+//! use disintegrate::{DomainIdentifier, DomainIdentifierSet, Identifier, domain_identifiers, IntoIdentifierValue};
 //!
 //! // Create domain identifiers
 //! let identifier1 = Identifier::new("id1").unwrap();
@@ -21,43 +21,41 @@
 //! // Insert a new domain identifier
 //! let new_identifier = DomainIdentifier {
 //!     key: Identifier::new("id3").unwrap(),
-//!     value: "value3".to_string(),
+//!     value: "value3".into_identifier_value(),
 //! };
 //! identifier_set.insert(new_identifier);
 //!
 //! // Access domain identifiers
 //! assert_eq!(identifier_set.len(), 3);
-//! assert_eq!(identifier_set.get(&identifier1), Some(&"value1".to_string()));
-//! assert_eq!(identifier_set.get(&identifier2), Some(&"value2".to_string()));
+//! assert_eq!(identifier_set.get(&identifier1), Some("value1".into_identifier_value()).as_ref());
+//! assert_eq!(identifier_set.get(&identifier2), Some("value2".into_identifier_value()).as_ref());
 //!
 //! // Iterate over domain identifiers
 //! for (key, value) in &*identifier_set {
 //!     println!("Identifier: {}, Value: {}", key, value);
 //! }
 //! ```
+use crate::{Identifier, IdentifierValue};
 use std::{collections::BTreeMap, ops::Deref};
-
-use crate::identifier::Identifier;
-use serde::{Deserialize, Serialize};
 
 /// Represents a key-value pair of domain identifiers.
 ///
 /// The `DomainIdentifier` struct is used to associate a specific `Identifier` key with a corresponding `String` value.
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct DomainIdentifier {
     pub key: Identifier,
-    pub value: String,
+    pub value: IdentifierValue,
 }
 
 /// A set of domain identifiers, represented as a map of `Identifier` keys and `String` values.
 ///
 /// The `DomainIdentifierSet` struct is used to store a collection of domain identifiers.
-#[derive(Debug, Default, PartialEq, Clone, Deserialize, Serialize)]
-pub struct DomainIdentifierSet(BTreeMap<Identifier, String>);
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct DomainIdentifierSet(BTreeMap<Identifier, IdentifierValue>);
 
 impl DomainIdentifierSet {
     /// Creates a new `DomainIdentifierSet` with the given `BTreeMap` of domain identifiers.
-    pub fn new(domain_identifiers: BTreeMap<Identifier, String>) -> Self {
+    pub fn new(domain_identifiers: BTreeMap<Identifier, IdentifierValue>) -> Self {
         Self(domain_identifiers)
     }
 
@@ -70,7 +68,7 @@ impl DomainIdentifierSet {
 /// Implements the `Deref` trait for `DomainIdentifierSet`, allowing it to be dereferenced to a `HashMap<Identifier, String>`.
 /// This enables transparent access to the underlying `BTreeMap` of domain identifiers.
 impl Deref for DomainIdentifierSet {
-    type Target = BTreeMap<Identifier, String>;
+    type Target = BTreeMap<Identifier, IdentifierValue>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -85,8 +83,8 @@ macro_rules! domain_identifiers{
     };
     {$($key:ident: $value:expr),*} => {{
         #[allow(unused_mut)]
-        let mut domain_identifiers = std::collections::BTreeMap::<$crate::identifier::Identifier, String>::new();
-        $(domain_identifiers.insert($crate::ident!(#$key), $value.to_string());)*
+        let mut domain_identifiers = std::collections::BTreeMap::<$crate::Identifier, $crate::IdentifierValue>::new();
+        $(domain_identifiers.insert($crate::ident!(#$key), $crate::IntoIdentifierValue::into_identifier_value($value.clone()));)*
         $crate::domain_identifier::DomainIdentifierSet::new(domain_identifiers)
     }};
 }

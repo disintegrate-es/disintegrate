@@ -88,23 +88,31 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
                     let payload_type = &fields.unnamed.first().unwrap().ty;
                     quote! {
                         disintegrate::const_slices_concat!(
+                            &disintegrate::DomainIdentifierInfo,
                             #acc,
                             #payload_type::SCHEMA.domain_identifiers
                         )
                     }
                 }
                 Fields::Named(fields) => {
-                    let identifiers_fields: Vec<_> = fields
+                    let identifiers_fields =  fields
                         .named
                         .iter()
-                        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
-                        .map(|f| f.ident.as_ref().map(ToString::to_string))
+                        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID));
+
+                    let identifiers_idents: Vec<_> = identifiers_fields.clone()
+                        .map(|f| f.ident.as_ref())
                         .collect();
+
+                    let identifiers_types: Vec<_> = identifiers_fields
+                        .map(|f| f.ty.clone())
+                        .collect();
+
                     quote! {
-                        disintegrate::const_slices_concat!(#acc, &[#(#identifiers_fields,)*])
+                        disintegrate::const_slices_concat!(&disintegrate::DomainIdentifierInfo, #acc, &[#(&disintegrate::DomainIdentifierInfo{ident: disintegrate::ident!(##identifiers_idents), type_info: <#identifiers_types as disintegrate::IntoIdentifierValue>::TYPE},)*])
                     }
                 }
-                Fields::Unit => quote!(disintegrate::const_slices_concat!(#acc, &[])),
+                Fields::Unit => quote!(disintegrate::const_slices_concat!(&disintegrate::DomainIdentifierInfo, #acc, &[])),
             });
 
     let types = data
@@ -113,7 +121,13 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
         .map(|variant| variant.ident.to_string());
 
     let impl_domain_identifiers_schema = quote! {
-        disintegrate::const_slice_unique!(#domain_identifiers_slice)
+        disintegrate::const_slice_unique!(&disintegrate::DomainIdentifierInfo, #domain_identifiers_slice, const fn compare(a: &disintegrate::DomainIdentifierInfo, b: &disintegrate::DomainIdentifierInfo) -> i8 {
+           let result = disintegrate::utils::compare(a.ident.into_inner(), b.ident.into_inner());
+           if result == 0 && (a.type_info as isize) != (b.type_info as isize) {
+            panic!("Domain identifiers must have a consistent type in all its definitions");
+           }
+           result
+        })
     };
     Ok(quote! {
         impl disintegrate::Event for #name {
@@ -141,21 +155,23 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
     let name = ast.ident.clone();
     let impl_type = name.to_string();
 
-    let identifiers_fields: Vec<_> = data
+    let identifiers_fields = data
         .fields
         .iter()
-        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
+        .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID));
+
+    let identifiers_idents: Vec<_> = identifiers_fields
+        .clone()
         .filter_map(|f| f.ident.as_ref())
         .collect();
 
-    let identifiers_names: Vec<_> = identifiers_fields.iter().map(ToString::to_string).collect();
+    let identifiers_types: Vec<_> = identifiers_fields.clone().map(|f| f.ty.clone()).collect();
 
-    let reserved_identifiers = reserved_identifier_names(&identifiers_fields);
+    let reserved_identifiers = reserved_identifier_names(&identifiers_idents);
 
     Ok(quote! {
         impl disintegrate::Event for #name {
-
-            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers: &[#(#identifiers_names,)*]};
+            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers:&[#(&disintegrate::DomainIdentifierInfo{ident: disintegrate::ident!(##identifiers_idents), type_info: <#identifiers_types as disintegrate::IntoIdentifierValue>::TYPE},)*]};
 
             fn name(&self) -> &'static str {
                 #impl_type
@@ -163,7 +179,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
 
             fn domain_identifiers(&self) -> disintegrate::DomainIdentifierSet {
                 #reserved_identifiers
-                disintegrate::domain_identifiers!{#(#identifiers_fields: self.#identifiers_fields),*}
+                disintegrate::domain_identifiers!{#(#identifiers_idents: self.#identifiers_idents),*}
             }
         }
     })
