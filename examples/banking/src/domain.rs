@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
 #[group(AccountStateEvent, [AccountOpened, AccountClosed])]
-#[group(AccountBalanceEvent, [AmountDeposited, AmountWithdrawn, TransferSent])]
+#[group(AccountBalanceEvent, [AmountDeposited, AmountWithdrawn, TransferSent, TransferReceived])]
 pub enum DomainEvent {
     AccountOpened {
         #[id]
@@ -17,8 +17,13 @@ pub enum DomainEvent {
     TransferSent {
         #[id]
         account_id: AccountId,
+        to: AccountId,
+        amount: i32,
+    },
+    TransferReceived {
         #[id]
-        beneficiary_id: AccountId,
+        account_id: AccountId,
+        from: AccountId,
         amount: i32,
     },
     AmountDeposited {
@@ -54,15 +59,12 @@ pub type AccountId = i64;
 pub struct AccountBalance {
     #[id]
     account_id: AccountId,
-    #[id]
-    beneficiary_id: AccountId,
     balance: i32,
 }
 impl AccountBalance {
     pub fn new(account_id: AccountId) -> Self {
         Self {
             account_id,
-            beneficiary_id: account_id,
             balance: 0,
         }
     }
@@ -77,14 +79,11 @@ impl StateMutate for AccountBalance {
             AccountBalanceEvent::AmountWithdrawn { amount, .. } => {
                 self.balance -= amount;
             }
-            AccountBalanceEvent::TransferSent {
-                account_id, amount, ..
-            } => {
-                if self.account_id == account_id {
-                    self.balance -= amount;
-                } else {
-                    self.balance += amount;
-                }
+            AccountBalanceEvent::TransferSent { amount, .. } => {
+                self.balance -= amount;
+            }
+            AccountBalanceEvent::TransferReceived { amount, .. } => {
+                self.balance += amount;
             }
         }
     }
@@ -278,12 +277,6 @@ impl Decision for WithdrawAmount {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct MoneyTransfer {
-    account_balance: AccountBalance,
-    beneficiary_status: AccountState,
-}
-
 pub struct SendMoney {
     account_id: AccountId,
     beneficiary_id: AccountId,
@@ -352,11 +345,18 @@ impl Decision for SendMoney {
             return Err(Error::InsufficientBalance);
         }
 
-        Ok(vec![DomainEvent::TransferSent {
-            account_id: self.account_id,
-            beneficiary_id: self.beneficiary_id,
-            amount: self.amount,
-        }])
+        Ok(vec![
+            DomainEvent::TransferSent {
+                account_id: self.account_id,
+                to: self.beneficiary_id,
+                amount: self.amount,
+            },
+            DomainEvent::TransferReceived {
+                account_id: self.beneficiary_id,
+                from: self.account_id,
+                amount: self.amount,
+            },
+        ])
     }
 }
 
@@ -490,11 +490,18 @@ mod test {
             DomainEvent::AccountOpened { account_id: 2 },
         ])
         .when(SendMoney::new(1, 2, 7))
-        .then(vec![DomainEvent::TransferSent {
-            account_id: 1,
-            beneficiary_id: 2,
-            amount: 7,
-        }])
+        .then(vec![
+            DomainEvent::TransferSent {
+                account_id: 1,
+                to: 2,
+                amount: 7,
+            },
+            DomainEvent::TransferReceived {
+                account_id: 2,
+                from: 1,
+                amount: 7,
+            },
+        ])
     }
 
     #[test]
