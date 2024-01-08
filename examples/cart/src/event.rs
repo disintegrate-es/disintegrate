@@ -2,6 +2,13 @@
 use disintegrate::Event;
 use serde::{Deserialize, Serialize};
 
+
+#[derive(Event, PartialEq)]
+pub enum Test{}
+
+//#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+//pub enum Test2{}
+
 #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
 #[group(UserEvent, [UserCreated])]
 #[group(CartEvent, [ItemAdded, ItemRemoved, ItemUpdated, CouponApplied])]

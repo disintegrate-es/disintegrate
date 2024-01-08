@@ -38,7 +38,7 @@ macro_rules! const_count_dup {
         let mut count = 0;
         let mut i = 0;
         let mut j = 1;
-        while i < $a.len() - 1 {
+        while i < $a.len() {
             while j < $a.len() {
                 if compare($a[i], $a[j]) == 0 {
                     count += 1;
