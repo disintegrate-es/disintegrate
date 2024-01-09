@@ -42,7 +42,7 @@ pub fn event_inner(ast: &DeriveInput) -> Result<TokenStream> {
 
 fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
     let name = ast.ident.clone();
-    let no_variants_deref = if data.variants.len() == 0 {
+    let no_variants_deref = if data.variants.is_empty() {
         quote!(*)
     } else {
         quote!()
