@@ -189,7 +189,7 @@ macro_rules! filter {
                 });
 
                 if !$crate::utils::include(DOMAIN_IDENTIFIERS_IDENTS, FILTER_ARG) {
-                    panic!("Invalid eq filter: the specified domain identifier does not exist");
+                    panic!(concat!("Invalid eq filter: the domain identifier ", stringify!($ident), " does not exist"));
                 }
                 FILTER_ARG
             };

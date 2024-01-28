@@ -70,7 +70,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
     if state_query_attrs.len() != 1 {
         return Err(Error::new(
             state_query_ident.span(),
-            "expected a `state` attribute",
+            format!("expected a `{STATE_QUERY}` attribute"),
         ));
     }
 

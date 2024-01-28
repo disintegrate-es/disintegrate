@@ -42,6 +42,11 @@ pub fn event_inner(ast: &DeriveInput) -> Result<TokenStream> {
 
 fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
     let name = ast.ident.clone();
+    let no_variants_deref = if data.variants.is_empty() {
+        quote!(*)
+    } else {
+        quote!()
+    };
     let impl_name = data.variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
         let event_name = variant_ident.to_string();
@@ -137,13 +142,13 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
             };
 
             fn name(&self) -> &'static str {
-                match self {
+                match #no_variants_deref self {
                    #(#impl_name)*
                 }
             }
 
             fn domain_identifiers(&self) -> disintegrate::DomainIdentifierSet {
-                match self {
+                match #no_variants_deref self {
                     #(#impl_domain_identifiers)*
                  }
             }
