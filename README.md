@@ -66,8 +66,8 @@ To add Disintegrate to your project, follow these steps:
 
     ```toml
     [dependencies]
-    disintegrate = "0.5.1"
-    disintegrate-postgres = "0.5.1"
+    disintegrate = "0.7.2"
+    disintegrate-postgres = "0.7.2"
     ```
 
     * Disintegrate provides several features that you can enable based on your project requirements. You can include them in your `Cargo.toml` file as follows:
