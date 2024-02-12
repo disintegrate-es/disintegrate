@@ -17,7 +17,7 @@ disintegrate = { version = "0.7.2", path = "../disintegrate" }
 disintegrate-serde = { version = "0.7.1", path = "../disintegrate-serde" }
 disintegrate-macros = { version = "0.7.2", path = "../disintegrate-macros" }
 serde = "1.0.196"
-serde_json = "1.0.108"
+serde_json = "1.0.113"
 sqlx = { version = "0.7.2", features = ["postgres", "runtime-tokio-rustls", "uuid"] }
 async-trait = "0.1.77"
 futures = "0.3.30"
