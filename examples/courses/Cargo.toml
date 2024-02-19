@@ -28,4 +28,4 @@ dotenv = "0.15.0"
 serde = "1.0.196"
 
 [build-dependencies]
-tonic-build = { version = "0.10.2", features = ["prost"] }
+tonic-build = { version = "0.11.0", features = ["prost"] }
