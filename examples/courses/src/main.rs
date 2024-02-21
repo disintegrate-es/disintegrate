@@ -5,7 +5,6 @@ use application::Application;
 use disintegrate::serde::prost::Prost;
 use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore};
 use tokio::signal;
-use tower_http::trace::TraceLayer;
 
 use courses::{application, domain::DomainEvent, grpc, proto, read_model};
 
@@ -46,13 +45,7 @@ async fn grpc_server(app: Application) -> Result<()> {
     let subscription_svc =
         proto::subscription_server::SubscriptionServer::new(grpc::SubscriptionApi::new(app));
 
-    let layer = tower::ServiceBuilder::new()
-        .layer(TraceLayer::new_for_grpc())
-        .timeout(Duration::from_secs(5))
-        .into_inner();
-
     tonic::transport::Server::builder()
-        .layer(layer)
         .add_service(health_svc)
         .add_service(reflection_svc)
         .add_service(course_svc)
