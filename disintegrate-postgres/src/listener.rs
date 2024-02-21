@@ -205,7 +205,6 @@ impl PgEventListenerConfig {
 #[async_trait]
 trait EventListenerExecutor {
     fn config(&self) -> &PgEventListenerConfig;
-    fn event_listener_id(&self) -> &str;
     async fn init(&self) -> Result<(), Error>;
     async fn execute(&self) -> Result<(), Error>;
 }
@@ -336,10 +335,6 @@ where
 {
     fn config(&self) -> &PgEventListenerConfig {
         &self.config
-    }
-
-    fn event_listener_id(&self) -> &str {
-        self.event_handler.id()
     }
 
     async fn init(&self) -> Result<(), Error> {

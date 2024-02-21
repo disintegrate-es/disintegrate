@@ -12,15 +12,15 @@ anyhow = "1.0.79"
 async-trait = "0.1.77"
 disintegrate = {version = "0.7.2", path = "../../disintegrate", features = ["macros", "serde-prost"] }
 disintegrate-postgres = { version = "0.7.2", path = "../../disintegrate-postgres", features = ["listener"] }
-opentelemetry = { version = "0.19.0", features = ["rt-tokio"] }
-opentelemetry-jaeger = { version = "0.18.0", features = ["rt-tokio"] }
+opentelemetry = { version = "0.20.0", features = ["rt-tokio"] }
+opentelemetry-jaeger = { version = "0.20.0", features = ["rt-tokio"] }
 rust_decimal = "1.33.1"
 sqlx = { version = "0.7.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.56"
 tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "signal"] }
-tonic = { version = "0.10.2", features = ["gzip", "transport"] }
-tonic-health = "0.10.2"
-tonic-reflection = "0.10.2"
+tonic = { version = "0.11.0", features = ["gzip", "transport"] }
+tonic-health = "0.11.0"
+tonic-reflection = "0.11.0"
 tower = "0.4.13"
 tower-http = { version = "0.5.1", features = ["trace"] }
 prost = {version = "0.12.3"}
@@ -28,4 +28,4 @@ dotenv = "0.15.0"
 serde = "1.0.196"
 
 [build-dependencies]
-tonic-build = { version = "0.10.2", features = ["prost"] }
+tonic-build = { version = "0.11.0", features = ["prost"] }
