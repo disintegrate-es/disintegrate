@@ -1,3 +1,5 @@
+[![Crates.io](https://img.shields.io/crates/v/disintegrate)](https://crates.io/crates/disintegrate)
+[![docs](https://img.shields.io/badge/API-docs-blue.svg)](https://docs.rs/disintegrate)
 # Disintegrate
 
 Disintegrate is a Rust library that provides an alternative approach to building domain objects from an event stream. While supporting traditional aggregates, Disintegrate introduces a novel method that allows for more flexibility and adaptability in modeling business rules.
