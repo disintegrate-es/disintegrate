@@ -299,9 +299,9 @@ checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
 name = "assert2"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84c2a406fdd319a14eccedbc8d1ef96b27e4d2101f19d997ac19fb307d919f39"
+checksum = "844ca3172d927ddd9d01f63b6c80f4ebd3e01c3f787c204626635450dfe3edba"
 dependencies = [
  "assert2-macros",
  "diff",
@@ -311,9 +311,9 @@ dependencies = [
 
 [[package]]
 name = "assert2-macros"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d83ae6bec6fbfa955b8ff04be5e63ae26ed2d9d068979d993142f13a2133344"
+checksum = "9ec0e42bd0fe1c8d72c7bde53ac8686764cea0fd86f412b92fcad20fea08b489"
 dependencies = [
  "proc-macro2",
  "quote",
