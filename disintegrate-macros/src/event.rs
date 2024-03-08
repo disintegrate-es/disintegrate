@@ -170,7 +170,7 @@ fn enum_unnamed_field_type(payload_field: &syn::Field) -> &syn::Type {
                     syn::GenericArgument::Type(boxed_type) => return boxed_type,
                     _ => unreachable!("box should have a type generic argument"),
                 },
-                _ => unreachable!("box should have a a bracketed generic argument"),
+                _ => unreachable!("box should have a bracketed generic argument"),
             }
         }
     };
