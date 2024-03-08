@@ -3,7 +3,7 @@ mod group;
 use group::{groups, impl_group};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Result};
+use syn::{AngleBracketedGenericArguments, Data, DeriveInput, Error, Result};
 use syn::{DataEnum, DataStruct, Fields};
 
 use crate::reserved_identifier_names;
@@ -90,7 +90,8 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
             .iter()
             .fold(quote!(&[]), |acc, variant| match &variant.fields {
                 Fields::Unnamed(fields) => {
-                    let payload_type = &fields.unnamed.first().unwrap().ty;
+                    let payload_field = fields.unnamed.first().unwrap();
+                    let payload_type = enum_unnamed_field_type(payload_field);
                     quote! {
                         disintegrate::const_slices_concat!(
                             &disintegrate::DomainIdentifierInfo,
@@ -135,6 +136,7 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
         })
     };
     Ok(quote! {
+        #[automatically_derived]
         impl disintegrate::Event for #name {
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema {
                 types: &[#(#types,)*],
@@ -156,6 +158,25 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
     })
 }
 
+fn enum_unnamed_field_type(payload_field: &syn::Field) -> &syn::Type {
+    if let syn::Type::Path(ref ty_path) = payload_field.ty {
+        let last_segment = ty_path.path.segments.last().expect("one path segment");
+        if last_segment.ident == "Box" {
+            match last_segment.arguments {
+                syn::PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+                    ref args,
+                    ..
+                }) => match args.last().unwrap() {
+                    syn::GenericArgument::Type(boxed_type) => return boxed_type,
+                    _ => unreachable!("box should have a type generic argument"),
+                },
+                _ => unreachable!("box should have a a bracketed generic argument"),
+            }
+        }
+    };
+    &payload_field.ty
+}
+
 fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
     let name = ast.ident.clone();
     let impl_type = name.to_string();
@@ -175,6 +196,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
     let reserved_identifiers = reserved_identifier_names(&identifiers_idents);
 
     Ok(quote! {
+        #[automatically_derived]
         impl disintegrate::Event for #name {
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers:&[#(&disintegrate::DomainIdentifierInfo{ident: disintegrate::ident!(##identifiers_idents), type_info: <#identifiers_types as disintegrate::IntoIdentifierValue>::TYPE},)*]};
 
