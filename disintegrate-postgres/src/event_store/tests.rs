@@ -114,7 +114,7 @@ async fn it_appends_events(pool: PgPool) {
         .unwrap();
     assert_eq!(stored_events.len(), 2);
     assert_event_row(
-        stored_events.get(0).unwrap(),
+        stored_events.first().unwrap(),
         1,
         "ShoppingCartAdded",
         added_event("product_1", "cart_1"),

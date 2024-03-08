@@ -99,6 +99,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
     let state_query = impl_state_query(event_type.clone(), &identifiers_fields);
 
     Ok(quote! {
+        #[automatically_derived]
         impl disintegrate::StateQuery for #state_query_ident {
             const NAME: &'static str = #state_query_name;
 

@@ -7,8 +7,14 @@ struct UserUpdated {
     email: String,
 }
 
+#[derive(Event, Clone, Debug, PartialEq, Eq)]
+struct UserDeleted {
+    #[id]
+    user_id: String,
+}
+
 #[derive(Event, Debug, PartialEq, Eq)]
-#[group(UserEvent, [UserCreated, UserUpdated])]
+#[group(UserEvent, [UserCreated, UserUpdated, UserDeleted])]
 #[group(OrderEvent, [OrderCreated, OrderCancelled])]
 enum DomainEvent {
     UserCreated {
@@ -18,6 +24,7 @@ enum DomainEvent {
         email: String,
     },
     UserUpdated(UserUpdated),
+    UserDeleted(Box<UserDeleted>),
     OrderCreated {
         #[id]
         order_id: String,
@@ -36,6 +43,7 @@ fn it_correctly_sets_event_names() {
         &[
             "UserCreated",
             "UserUpdated",
+            "UserDeleted",
             "OrderCreated",
             "OrderCancelled"
         ]
@@ -65,6 +73,16 @@ fn it_returns_correct_domain_identifiers() {
     let domain_identifiers = enum_unit_variant_event.domain_identifiers();
     assert_eq!(
         domain_identifiers.get(&ident!(#user_id)),
+        Some(&user_id.clone().into_identifier_value())
+    );
+
+    let enum_boxed_variant_event = DomainEvent::UserDeleted(Box::new(UserDeleted {
+        user_id: user_id.clone(),
+    }));
+
+    let domain_identifiers = enum_boxed_variant_event.domain_identifiers();
+    assert_eq!(
+        domain_identifiers.get(&ident!(#user_id)),
         Some(&user_id.into_identifier_value())
     );
 }
@@ -87,6 +105,17 @@ fn it_generates_event_groups() {
         }
     );
 
+    let user_boxed_event = UserEvent::UserDeleted(Box::new(UserDeleted {
+        user_id: "user123".to_string(),
+    }));
+
+    let user_event: DomainEvent = user_boxed_event.into();
+    assert_eq!(
+        user_event,
+        DomainEvent::UserDeleted(Box::new(UserDeleted {
+            user_id: "user123".to_string(),
+        }))
+    );
     let order_event = OrderEvent::OrderCreated {
         order_id: "order456".to_string(),
         amount: 100,
@@ -101,7 +130,10 @@ fn it_generates_event_groups() {
         }
     );
 
-    assert_eq!(UserEvent::SCHEMA.types, &["UserCreated", "UserUpdated"]);
+    assert_eq!(
+        UserEvent::SCHEMA.types,
+        &["UserCreated", "UserUpdated", "UserDeleted"]
+    );
 
     assert_eq!(
         OrderEvent::SCHEMA.types,
