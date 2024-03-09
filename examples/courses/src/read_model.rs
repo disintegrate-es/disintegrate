@@ -43,7 +43,8 @@ impl ReadModelProjection {
            course_id TEXT PRIMARY KEY,
            name TEXT,
            available_seats INT,
-           closed BOOL DEFAULT false
+           closed BOOL DEFAULT false,
+           event_id BIGINT not null
         )"#,
         )
         .execute(&pool)
@@ -67,6 +68,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
     }
 
     async fn handle(&self, event: PersistedEvent<DomainEvent>) -> Result<(), Self::Error> {
+        let event_id = event.id();
         match event.into_inner() {
             DomainEvent::CourseCreated {
                 course_id,
@@ -74,44 +76,51 @@ impl EventListener<DomainEvent> for ReadModelProjection {
                 seats,
             } => {
                 sqlx::query(
-                    "INSERT INTO course (course_id, name, available_seats) VALUES($1, $2, $3)",
+                    "INSERT INTO course (course_id, name, available_seats, event_id) VALUES($1, $2, $3, $4) ON CONFLICT DO NOTHING",
                 )
                 .bind(course_id)
                 .bind(name)
                 .bind(seats as i32)
+                .bind(event_id)
                 .execute(&self.pool)
                 .await
                 .unwrap();
             }
             DomainEvent::CourseClosed { course_id } => {
-                sqlx::query("UPDATE course SET closed = true WHERE course_id = $1")
-                    .bind(course_id)
-                    .execute(&self.pool)
-                    .await
-                    .unwrap();
+                sqlx::query(
+                    "UPDATE course SET closed = true WHERE course_id = $1 and event_id < $2",
+                )
+                .bind(course_id)
+                .bind(event_id)
+                .execute(&self.pool)
+                .await
+                .unwrap();
             }
             DomainEvent::StudentSubscribed { course_id, .. } => {
                 sqlx::query(
-                    "UPDATE course SET available_seats = available_seats - 1 WHERE course_id = $1",
+                    "UPDATE course SET available_seats = available_seats - 1 WHERE course_id = $1 and event_id < $2",
                 )
                 .bind(course_id)
+                .bind(event_id)
                 .execute(&self.pool)
                 .await
                 .unwrap();
             }
             DomainEvent::StudentUnsubscribed { course_id, .. } => {
                 sqlx::query(
-                    "UPDATE course SET available_seats = available_seats + 1 WHERE course_id = $1",
+                    "UPDATE course SET available_seats = available_seats + 1 WHERE course_id = $1 and event_id < $2",
                 )
                 .bind(course_id)
+                .bind(event_id)
                 .execute(&self.pool)
                 .await
                 .unwrap();
             }
             DomainEvent::CourseRenamed { course_id, name } => {
-                sqlx::query("UPDATE course SET name = $2 WHERE course_id = $1")
+                sqlx::query("UPDATE course SET name = $2 WHERE course_id = $1 and event_id < $2")
                     .bind(course_id)
                     .bind(name)
+                    .bind(event_id)
                     .execute(&self.pool)
                     .await
                     .unwrap();
