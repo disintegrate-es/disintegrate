@@ -57,6 +57,7 @@ impl StateMutate for Course {
     }
 }
 
+#[derive(Debug)]
 pub struct CreateCourse {
     pub course_id: CourseId,
     pub name: String,
@@ -101,6 +102,7 @@ impl Decision for CreateCourse {
     }
 }
 
+#[derive(Debug)]
 pub struct CloseCourse {
     pub course_id: CourseId,
 }
@@ -136,6 +138,7 @@ impl Decision for CloseCourse {
     }
 }
 
+#[derive(Debug)]
 pub struct RenameCourse {
     pub course_id: CourseId,
     pub name: String,

@@ -5,6 +5,7 @@ use application::Application;
 use disintegrate::serde::prost::Prost;
 use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore};
 use tokio::signal;
+use tracing_subscriber::{self, fmt::format::FmtSpan};
 
 use courses::{application, domain::DomainEvent, grpc, proto, read_model};
 
@@ -12,6 +13,10 @@ type EventStore = PgEventStore<DomainEvent, Prost<DomainEvent, proto::Event>>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .init();
+
     let pool = courses::postgres::connect().await?;
     let serde = Prost::<DomainEvent, proto::Event>::default();
     let event_store = PgEventStore::new(pool.clone(), serde).await?;

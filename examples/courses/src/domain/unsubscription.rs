@@ -41,6 +41,7 @@ impl StateMutate for Unsubscription {
     }
 }
 
+#[derive(Debug)]
 pub struct UnsubscribeStudent {
     pub student_id: StudentId,
     pub course_id: CourseId,

@@ -89,6 +89,8 @@ impl StateMutate for Student {
         }
     }
 }
+
+#[derive(Debug)]
 pub struct SubscribeStudent {
     pub student_id: StudentId,
     pub course_id: CourseId,

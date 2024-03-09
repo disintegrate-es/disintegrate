@@ -59,6 +59,7 @@ impl StateMutate for Student {
     }
 }
 
+#[derive(Debug)]
 pub struct RegisterStudent {
     pub student_id: StudentId,
     pub name: String,
