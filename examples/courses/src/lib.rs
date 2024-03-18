@@ -1,7 +1,6 @@
 pub mod application;
 pub mod domain;
 pub mod grpc;
-pub mod postgres;
 pub mod read_model;
 pub mod serde;
 
