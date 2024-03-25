@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow = "1.0.79"
-async-trait = "0.1.77"
+async-trait = "0.1.79"
 disintegrate = {version = "0.7.3", path = "../../disintegrate", features = ["macros", "serde-prost"] }
 disintegrate-postgres = { version = "0.7.3", path = "../../disintegrate-postgres", features = ["listener"] }
 rust_decimal = "1.34.3"
