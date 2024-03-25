@@ -17,7 +17,7 @@ serde-prost = ["serde", "disintegrate-serde/prost"]
 serde-protobuf = ["serde", "disintegrate-serde/protobuf"]
 
 [dependencies]
-async-trait = "0.1.77"
+async-trait = "0.1.79"
 futures = "0.3.30"
 lazy_static = "1.4.0"
 regex = "1.10.2"
