@@ -14,8 +14,8 @@ struct UserDeleted {
 }
 
 #[derive(Event, Debug, PartialEq, Eq)]
-#[group(UserEvent, [UserCreated, UserUpdated, UserDeleted])]
-#[group(OrderEvent, [OrderCreated, OrderCancelled])]
+#[stream(UserEvent, [UserCreated, UserUpdated, UserDeleted])]
+#[stream(OrderEvent, [OrderCreated, OrderCancelled])]
 enum DomainEvent {
     UserCreated {
         #[id]
@@ -88,7 +88,7 @@ fn it_returns_correct_domain_identifiers() {
 }
 
 #[test]
-fn it_generates_event_groups() {
+fn it_generates_event_streams() {
     let user_event = UserEvent::UserCreated {
         user_id: "user123".to_string(),
         name: "John Doe".to_string(),

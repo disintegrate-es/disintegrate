@@ -9,11 +9,11 @@ pub use subscription::{SubscribeStudent, SubscriptionError};
 pub use unsubscription::{UnsubscribeStudent, UnsubscriptionError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Event)]
-#[group(CourseSubscriptionEvent, [CourseCreated, CourseClosed, StudentSubscribed, StudentUnsubscribed])]
-#[group(StudentSubscriptionEvent, [StudentSubscribed, StudentUnsubscribed, StudentRegistered])]
-#[group(UnsubscriptionEvent, [StudentSubscribed, StudentUnsubscribed])]
-#[group(CourseEvent, [CourseCreated, CourseClosed, CourseRenamed])]
-#[group(StudentEvent, [StudentRegistered])]
+#[stream(CourseSubscriptionEvent, [CourseCreated, CourseClosed, StudentSubscribed, StudentUnsubscribed])]
+#[stream(StudentSubscriptionEvent, [StudentSubscribed, StudentUnsubscribed, StudentRegistered])]
+#[stream(UnsubscriptionEvent, [StudentSubscribed, StudentUnsubscribed])]
+#[stream(CourseEvent, [CourseCreated, CourseClosed, CourseRenamed])]
+#[stream(StudentEvent, [StudentRegistered])]
 pub enum DomainEvent {
     CourseCreated {
         #[id]
