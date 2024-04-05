@@ -1,8 +1,8 @@
 mod stream;
 
-use stream::{streams, impl_stream};
 use proc_macro2::TokenStream;
 use quote::quote;
+use stream::{impl_stream, streams};
 use syn::{AngleBracketedGenericArguments, Data, DeriveInput, Error, Result};
 use syn::{DataEnum, DataStruct, Fields};
 
