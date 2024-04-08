@@ -1,8 +1,8 @@
-mod group;
+mod stream;
 
-use group::{groups, impl_group};
 use proc_macro2::TokenStream;
 use quote::quote;
+use stream::{impl_stream, streams};
 use syn::{AngleBracketedGenericArguments, Data, DeriveInput, Error, Result};
 use syn::{DataEnum, DataStruct, Fields};
 
@@ -13,12 +13,12 @@ pub fn event_inner(ast: &DeriveInput) -> Result<TokenStream> {
     match ast.data {
         Data::Enum(ref data) => {
             let derive_event = impl_enum(ast, data)?;
-            let groups = groups(ast)?;
-            let impl_groups = groups
+            let streams = streams(ast)?;
+            let impl_streams = streams
                 .iter()
-                .map(|g| impl_group(ast, g))
+                .map(|g| impl_stream(ast, g))
                 .collect::<Result<Vec<TokenStream>>>()?;
-            let derive_event_groups = groups
+            let derive_event_streams = streams
                 .iter()
                 .map(|g| {
                     if let Data::Enum(ref enum_data) = g.data {
@@ -31,8 +31,8 @@ pub fn event_inner(ast: &DeriveInput) -> Result<TokenStream> {
 
             Ok(quote! {
                   #derive_event
-                  #(#impl_groups)*
-                  #(#derive_event_groups)*
+                  #(#impl_streams)*
+                  #(#derive_event_streams)*
             })
         }
         Data::Struct(ref data) => impl_struct(ast, data),

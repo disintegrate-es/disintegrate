@@ -98,9 +98,9 @@ To add Disintegrate to your project, follow these steps:
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
-    #[group(UserEvent, [UserCreated])]
-    #[group(CartEvent, [ItemAdded, ItemRemoved, ItemUpdated, CouponApplied])]
-    #[group(CouponEvent, [CouponEmitted, CouponApplied])]
+    #[stream(UserEvent, [UserCreated])]
+    #[stream(CartEvent, [ItemAdded, ItemRemoved, ItemUpdated, CouponApplied])]
+    #[stream(CouponEvent, [CouponEmitted, CouponApplied])]
     pub enum DomainEvent {
         UserCreated {
             #[id]
@@ -141,9 +141,9 @@ To add Disintegrate to your project, follow these steps:
     }
     ```
 
-    In this example, we define an enum `DomainEvent` using the `#[derive(Event)]` attribute. The enum represents various events that can occur in your application. The `#[group]` attribute specifies the event groups, such as `UserEvent` and `CartEvent`, and their corresponding variants. This allows you to organize events into logical groups. The `#[id]` attribute on fields allows you to specify the domain identifiers of each event, which are used for filtering relevant events for a state query.
+    In this example, we define an enum `DomainEvent` using the `#[derive(Event)]` attribute. The enum represents various events that can occur in your application. The `#[stream]` attribute specifies the event streams, such as `UserEvent` and `CartEvent`, and their corresponding variants. This allows you to organize events into logical streams. The `#[id]` attribute on fields allows you to specify the domain identifiers of each event, which are used for filtering relevant events for a state query.
 
-3. Create a state query for constructing a view from events by deriving the `StateQuery` trait. To achieve this, define the event group using the `#[state_query]` attribute and annotate fields containing identifiers with `#[id]`. The library uses the annotated IDs to filter events in the specified group, retaining only those with corresponding IDs. The state must also implement the `StateMutate` trait, which defines how the data contained in the events is aggregated to construct the state:
+3. Create a state query for constructing a view from events by deriving the `StateQuery` trait. To achieve this, define the event stream using the `#[state_query]` attribute and annotate fields containing identifiers with `#[id]`. The library uses the annotated IDs to filter events in the specified stream, retaining only those with corresponding IDs. The state must also implement the `StateMutate` trait, which defines how the data contained in the events is aggregated to construct the state:
 
     ```rust,ignore
     use crate::event::{CartEvent, CouponEvent, DomainEvent};
