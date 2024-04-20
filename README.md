@@ -68,16 +68,16 @@ To add Disintegrate to your project, follow these steps:
 
     ```toml
     [dependencies]
-    disintegrate = "0.7.3"
-    disintegrate-postgres = "0.7.3"
+    disintegrate = "0.8.0"
+    disintegrate-postgres = "0.8.0"
     ```
 
     * Disintegrate provides several features that you can enable based on your project requirements. You can include them in your `Cargo.toml` file as follows:
 
     ```toml
     [dependencies]
-    disintegrate = { version = "0.7.3", features = ["macros", "serde-prost"] }
-    disintegrate-postgres = { version = "0.7.3", features = ["listener"] }
+    disintegrate = { version = "0.8.0", features = ["macros", "serde-prost"] }
+    disintegrate-postgres = { version = "0.8.0", features = ["listener"] }
     ```
 
     * The macros feature enables the use of derive macros to simplify events implementations.
@@ -89,7 +89,7 @@ To add Disintegrate to your project, follow these steps:
         * To enable Prost serialization, use the `serde-prost` feature: `features = ["serde-prost"]`.
         * To enable Protocol Buffers serialization, use the `serde-protobuf` feature: `features = ["serde-protobuf"]`.
 
-    * If you're using the PostgreSQL event store backend and want to use the listener mechanism, you can enable the `listener` feature: `disintegrate-postgres = {version = "0.7.3", features = ["listener"]}`.
+    * If you're using the PostgreSQL event store backend and want to use the listener mechanism, you can enable the `listener` feature: `disintegrate-postgres = {version = "0.8.0", features = ["listener"]}`.
 
 2. Define the list of events in your application. You can use the Event Storming technique to identify the events that occur in your system. Here's an example of defining events using Disintegrate:
 

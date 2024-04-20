@@ -176,32 +176,34 @@ async fn it_runs_event_listeners(pool: PgPool) {
     .await
     .unwrap();
 
-    let event_listener = PgEventListener::builder(event_store.clone())
-        .register_listener(
-            CartEventHandler::new(pool.clone()).await.unwrap(),
-            PgEventListenerConfig::poller(Duration::from_millis(50)),
-        )
-        .start_with_shutdown(async {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-        });
-
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
     let query = query!(
         ShoppingCartEvent,
         (cart_id == cart_id) or (product_id == product_id)
     );
-    let append_handle = event_store.append(
-        vec![ShoppingCartEvent::Added(CartEventPayload {
-            cart_id,
-            product_id,
-            quantity: 1,
-        })],
-        query,
-        0,
-    );
+    let append_result = event_store
+        .append(
+            vec![ShoppingCartEvent::Added(CartEventPayload {
+                cart_id,
+                product_id,
+                quantity: 1,
+            })],
+            query,
+            0,
+        )
+        .await;
 
-    let (_, append_result) = tokio::join!(event_listener, append_handle);
+    PgEventListener::builder(event_store.clone())
+        .register_listener(
+            CartEventHandler::new(pool.clone()).await.unwrap(),
+            PgEventListenerConfig::poller(Duration::from_millis(10)),
+        )
+        .start_with_shutdown(async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        })
+        .await
+        .unwrap();
 
     assert!(append_result.is_ok());
     let carts = Cart::carts(&pool).await.unwrap();
