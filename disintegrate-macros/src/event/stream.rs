@@ -33,25 +33,25 @@ impl Parse for QueryArgs {
     }
 }
 
-pub fn groups(ast: &DeriveInput) -> Result<Vec<DeriveInput>> {
+pub fn streams(ast: &DeriveInput) -> Result<Vec<DeriveInput>> {
     ast.attrs
         .iter()
-        .filter(|attr| attr.path().is_ident("group"))
+        .filter(|attr| attr.path().is_ident("stream"))
         .map(|g| {
             let args: QueryArgs = g.parse_args().unwrap();
-            let group_ident = args.name;
+            let stream_ident = args.name;
             let selected_variants: Vec<_> = args.variants;
 
             let event_data = match ast.data {
                 Data::Enum(ref enum_data) => Ok(enum_data),
                 _ => Err(Error::new(
-                    group_ident.span(),
+                    stream_ident.span(),
                     "Can only derive from an enum",
                 )),
             }?;
 
-            let mut group_data = event_data.clone();
-            group_data.variants = event_data
+            let mut stream_data = event_data.clone();
+            stream_data.variants = event_data
                 .variants
                 .iter()
                 .filter(|variant| {
@@ -62,32 +62,32 @@ pub fn groups(ast: &DeriveInput) -> Result<Vec<DeriveInput>> {
                 .cloned()
                 .collect();
 
-            let mut group = ast.clone();
-            group.ident = group_ident;
-            group.data = Data::Enum(group_data);
-            group.attrs = vec![];
+            let mut stream = ast.clone();
+            stream.ident = stream_ident;
+            stream.data = Data::Enum(stream_data);
+            stream.attrs = vec![];
 
-            Ok(group)
+            Ok(stream)
         })
         .collect()
 }
 
-pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> Result<TokenStream> {
-    let mut group = group.clone();
-    let group_ident = &group.ident;
+pub fn impl_stream(parent: &DeriveInput, stream: &DeriveInput) -> Result<TokenStream> {
+    let mut stream = stream.clone();
+    let stream_ident = &stream.ident;
     let parent_ident = &parent.ident;
 
-    let error = format_ident!("{group_ident}ConvertError");
+    let error = format_ident!("{stream_ident}ConvertError");
 
-    let group_data = match group.data {
+    let stream_data = match stream.data {
         Data::Enum(ref mut enum_data) => Ok(enum_data),
         _ => Err(Error::new(
-            group_ident.span(),
+            stream_ident.span(),
             "Can only derive from an enum",
         )),
     }?;
 
-    group_data
+    stream_data
         .variants
         .iter_mut()
         .for_each(|variant| match &mut variant.fields {
@@ -98,28 +98,28 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> Result<TokenStre
             syn::Fields::Unit => (),
         });
 
-    let pats: Vec<TokenStream> = group_data
+    let pats: Vec<TokenStream> = stream_data
         .variants
         .iter()
         .map(variant_to_unary_pat)
         .collect();
 
-    let from_group_arms = pats
+    let from_stream_arms = pats
         .iter()
-        .map(|pat| quote!(#group_ident::#pat => #parent_ident::#pat));
+        .map(|pat| quote!(#stream_ident::#pat => #parent_ident::#pat));
 
     let try_from_event_arms = pats
         .iter()
-        .map(|pat| quote!(#parent_ident::#pat => std::result::Result::Ok(#group_ident::#pat)));
+        .map(|pat| quote!(#parent_ident::#pat => std::result::Result::Ok(#stream_ident::#pat)));
 
-    let vis = &group.vis;
-    let (_group_impl, group_ty, _group_where) = group.generics.split_for_impl();
+    let vis = &stream.vis;
+    let (_stream_impl, stream_ty, _stream_where) = stream.generics.split_for_impl();
 
     let (event_impl, event_ty, event_where) = parent.generics.split_for_impl();
 
     Ok(quote! {
         #[derive(Clone, Debug, PartialEq, Eq)]
-        #group
+        #stream
 
         #[derive(Copy, Clone, Debug)]
         #vis struct #error;
@@ -133,16 +133,16 @@ pub fn impl_group(parent: &DeriveInput, group: &DeriveInput) -> Result<TokenStre
         impl std::error::Error for #error {}
 
         #[automatically_derived]
-        impl #event_impl std::convert::From<#group_ident #group_ty> for #parent_ident #event_ty #event_where {
-            fn from(child: #group_ident #group_ty) -> Self {
+        impl #event_impl std::convert::From<#stream_ident #stream_ty> for #parent_ident #event_ty #event_where {
+            fn from(child: #stream_ident #stream_ty) -> Self {
                 match child {
-                    #(#from_group_arms),*
+                    #(#from_stream_arms),*
                 }
             }
         }
 
         #[automatically_derived]
-        impl #event_impl std::convert::TryFrom<#parent_ident #event_ty> for #group_ident #group_ty #event_where {
+        impl #event_impl std::convert::TryFrom<#parent_ident #event_ty> for #stream_ident #stream_ty #event_where {
             type Error = #error;
 
             fn try_from(parent: #parent_ident #event_ty) -> std::result::Result<Self, Self::Error> {
