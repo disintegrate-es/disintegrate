@@ -15,7 +15,7 @@ use syn::{parse_macro_input, DeriveInput};
 /// trait, the enum gains the necessary functionality to be used as an event.
 ///
 /// The `Event` trait can be customized using attributes. The `id` attribute can be used to specify
-/// the domain identifier of an event, while the `group` attribute can be used to group related
+/// the domain identifier of an event, while the `stream` attribute can be used to stream related
 /// events together.
 ///
 /// # Example
@@ -24,8 +24,8 @@ use syn::{parse_macro_input, DeriveInput};
 /// use disintegrate::Event;
 ///
 /// #[derive(Event)]
-/// #[group(UserEvent, [UserRegistered, UserUpdated])]
-/// #[group(OrderEvent, [OrderCreated, OrderCancelled])]
+/// #[stream(UserEvent, [UserRegistered, UserUpdated])]
+/// #[stream(OrderEvent, [OrderCreated, OrderCancelled])]
 /// enum DomainEvent{
 ///     UserCreated {
 ///         #[id]
@@ -51,9 +51,9 @@ use syn::{parse_macro_input, DeriveInput};
 /// ```
 ///
 /// In this example, the `OrderEvent` enum is marked as an event by deriving the `Event` trait. The
-/// `#[group]` attribute specifies the event group name and the list of variants to include in the group, while the `#[id]` attribute is used
+/// `#[stream]` attribute specifies the event stream name and the list of variants to include in the stream, while the `#[id]` attribute is used
 /// to specify the domain identifiers of each variant.
-#[proc_macro_derive(Event, attributes(group, id))]
+#[proc_macro_derive(Event, attributes(stream, id))]
 pub fn event(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     event::event_inner(&ast)

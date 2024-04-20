@@ -3,9 +3,9 @@ use disintegrate::Event;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
-#[group(UserEvent, [UserCreated])]
-#[group(CartEvent, [ItemAdded, ItemRemoved, ItemUpdated, CouponApplied])]
-#[group(CouponEvent, [CouponEmitted, CouponApplied])]
+#[stream(UserEvent, [UserCreated])]
+#[stream(CartEvent, [ItemAdded, ItemRemoved, ItemUpdated, CouponApplied])]
+#[stream(CouponEvent, [CouponEmitted, CouponApplied])]
 pub enum DomainEvent {
     UserCreated {
         #[id]

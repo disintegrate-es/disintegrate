@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Event, Serialize, Deserialize)]
-#[group(AccountStateEvent, [AccountOpened, AccountClosed])]
-#[group(AccountBalanceEvent, [AmountDeposited, AmountWithdrawn, TransferSent, TransferReceived])]
+#[stream(AccountStateEvent, [AccountOpened, AccountClosed])]
+#[stream(AccountBalanceEvent, [AmountDeposited, AmountWithdrawn, TransferSent, TransferReceived])]
 pub enum DomainEvent {
     AccountOpened {
         #[id]
