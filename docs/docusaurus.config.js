@@ -12,10 +12,10 @@ const config = {
   tagline: 'Disintegrate Rust library',
   favicon: 'img/favicon.ico',
   // Set the production url of your site here
-  url: 'https://disintegrate.github.io',
+  url: 'https://disintegrate-es.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/',
+  baseUrl: '/disintegrate/',
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'disintegrate-es', // Usually your GitHub org/user name.
