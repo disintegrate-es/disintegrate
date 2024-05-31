@@ -59,10 +59,11 @@ impl<E: Clone> StreamQuery<E> {
         }
     }
 
-    pub fn union<U: Event + Clone, O: Clone>(&self, other: &StreamQuery<O>) -> StreamQuery<U>
+    pub fn union<U, O>(&self, other: &StreamQuery<O>) -> StreamQuery<U>
     where
         E: Event + Into<U>,
-        O: Event + Into<U>,
+        U: Event + Clone,
+        O: Event + Into<U> + Clone,
     {
         StreamQuery {
             filter: or(self.filter.clone(), other.filter.clone()),

@@ -357,8 +357,6 @@ all_the_tuples!(impl_from_state);
 
 #[cfg(test)]
 mod test {
-    use futures::executor::block_on;
-
     use super::*;
     use crate::utils::tests::*;
 
@@ -391,8 +389,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn it_stores_all() {
+    #[tokio::test]
+    async fn it_stores_all() {
         let multi_state = (cart("c1", []), cart("c2", [])).into_state_part();
         let mut snapshotter = MockStateSnapshotter::new();
         snapshotter
@@ -405,11 +403,11 @@ mod test {
             .once()
             .withf(|s: &StatePart<Cart>| s.inner == cart("c2", []))
             .return_once(|_| Ok(()));
-        block_on(multi_state.store_all(&snapshotter)).unwrap();
+        multi_state.store_all(&snapshotter).await.unwrap();
     }
 
-    #[test]
-    fn it_loads_all() {
+    #[tokio::test]
+    async fn it_loads_all() {
         let mut multi_state = (cart("c1", []), cart("c2", [])).into_state_part();
         let mut snapshotter = MockStateSnapshotter::new();
         snapshotter
@@ -422,7 +420,7 @@ mod test {
             .once()
             .withf(|q| q.inner == cart("c2", []))
             .returning(|_| cart("c2", ["p2".to_owned()]).into_state_part());
-        block_on(multi_state.load_all(&snapshotter));
+        multi_state.load_all(&snapshotter).await;
         let (cart1, cart2) = multi_state;
         assert_eq!(cart1.inner, cart("c1", ["p1".to_owned()]));
         assert_eq!(cart2.inner, cart("c2", ["p2".to_owned()]));

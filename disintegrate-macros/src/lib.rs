@@ -109,17 +109,14 @@ pub fn state_query(input: TokenStream) -> TokenStream {
 fn reserved_identifier_names(identifiers_fields: &[&Ident]) -> Option<TokenStream2> {
     const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
 
-    if let Some(identifier) = identifiers_fields
+    identifiers_fields
         .iter()
         .find(|id| RESERVED_NAMES.contains(&id.to_string().as_str()))
-    {
-        return Some(
+        .map(|id| {
             syn::Error::new(
-                identifier.span(),
+                id.span(),
                 "Reserved domain identifier name. Please use a different name",
             )
-            .to_compile_error(),
-        );
-    }
-    None
+            .to_compile_error()
+        })
 }

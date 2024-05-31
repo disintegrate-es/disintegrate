@@ -135,15 +135,13 @@ impl<SS> DecisionMaker<SS> {
 
 #[cfg(test)]
 mod test {
-
-    use futures::executor::block_on;
     use mockall::predicate::eq;
 
     use super::*;
     use crate::{utils::tests::*, EventSourcedDecisionStateStore, NoSnapshot, StateQuery};
 
-    #[test]
-    fn it_processes_a_decision() {
+    #[tokio::test]
+    async fn it_processes_a_decision() {
         let mut database = MockDatabase::new();
 
         database.expect_stream().once().return_once(|_| {
@@ -181,6 +179,6 @@ mod test {
         let state_store = EventSourcedDecisionStateStore::new(event_store, NoSnapshot);
         let decision_maker = DecisionMaker::new(state_store);
 
-        block_on(decision_maker.make(mock_add_item)).unwrap();
+        decision_maker.make(mock_add_item).await.unwrap();
     }
 }
