@@ -198,13 +198,11 @@ where
 
 #[cfg(test)]
 mod test {
-    use futures::executor::block_on;
-
     use super::*;
     use crate::{utils::tests::*, IntoState, IntoStatePart, MultiState};
 
-    #[test]
-    fn it_loads_query_state() {
+    #[tokio::test]
+    async fn it_loads_query_state() {
         let mut mock_store = MockDatabase::new();
 
         mock_store.expect_stream().once().return_once(|_| {
@@ -218,7 +216,7 @@ mod test {
         let event_store = MockEventStore::new(mock_store);
         let state_store = EventSourcedDecisionStateStore::new(event_store, NoSnapshot);
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let state = block_on(state_store.load(state)).unwrap();
+        let state = state_store.load(state).await.unwrap();
         assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 3);
         let (cart1, cart2) = state;
         assert_eq!(cart1.version(), 2);
@@ -229,8 +227,8 @@ mod test {
         assert_eq!(cart2.into_state(), cart("c2", ["p3".to_owned()]));
     }
 
-    #[test]
-    fn it_persists_decision_changes() {
+    #[tokio::test]
+    async fn it_persists_decision_changes() {
         let mut mock_store = MockDatabase::new();
 
         mock_store
@@ -243,11 +241,14 @@ mod test {
         let event_store = MockEventStore::new(mock_store);
         let state_store = EventSourcedDecisionStateStore::new(event_store, NoSnapshot);
         let state = (Cart::new("c1"), Cart::new("c2")).into_state_part();
-        block_on(state_store.persist(state, vec![item_added_event("p2", "c1")], None, 1)).unwrap();
+        state_store
+            .persist(state, vec![item_added_event("p2", "c1")], None, 1)
+            .await
+            .unwrap();
     }
 
-    #[test]
-    fn it_loads_query_state_from_snapshot() {
+    #[tokio::test]
+    async fn it_loads_query_state_from_snapshot() {
         let mut mock_store = MockDatabase::new();
 
         mock_store.expect_stream().once().return_once(|_| {
@@ -280,7 +281,7 @@ mod test {
         let state_store =
             EventSourcedDecisionStateStore::new(event_store, WithSnapshot::new(snapshotter));
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let state = block_on(state_store.load(state)).unwrap();
+        let state = state_store.load(state).await.unwrap();
 
         assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 2);
         let (cart1, cart2) = state;
@@ -298,8 +299,8 @@ mod test {
         );
     }
 
-    #[test]
-    fn it_returns_the_max_version_of_the_loaded_snapshots() {
+    #[tokio::test]
+    async fn it_returns_the_max_version_of_the_loaded_snapshots() {
         let mut mock_store = MockDatabase::new();
 
         mock_store
@@ -327,7 +328,7 @@ mod test {
         let state_store =
             EventSourcedDecisionStateStore::new(event_store, WithSnapshot::new(snapshotter));
         let state = (cart("c1", []), cart("c2", [])).into_state_part();
-        let state = block_on(state_store.load(state)).unwrap();
+        let state = state_store.load(state).await.unwrap();
 
         assert_eq!(MultiState::<ShoppingCartEvent>::version(&state), 5);
     }
