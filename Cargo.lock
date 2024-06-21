@@ -804,6 +804,7 @@ dependencies = [
  "regex",
  "serde",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 
