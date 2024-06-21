@@ -1,0 +1,31 @@
+name: Test Docs
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+
+defaults:
+  run:
+    working-directory: ./docs
+
+jobs:
+  test-docs:
+    name: Test docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: yarn
+          cache-dependency-path: './docs'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Test build website
+        run: yarn build

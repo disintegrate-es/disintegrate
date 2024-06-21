@@ -349,13 +349,10 @@ where
 
     async fn execute(&self) -> Result<(), Error> {
         let result = self.try_execute().await;
-        if let Err(err) = result {
-            match err {
-                sqlx::Error::Io(_) | sqlx::Error::PoolTimedOut => Ok(()),
-                _ => Err(Error::Database(err)),
-            }
-        } else {
-            Ok(())
+        match result {
+            Err(sqlx::Error::Io(_)) | Err(sqlx::Error::PoolTimedOut) => Ok(()),
+            Err(err) => Err(Error::Database(err)),
+            _ => Ok(()),
         }
     }
 }
