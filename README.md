@@ -20,6 +20,7 @@ By leveraging the event stream as the foundation, Disintegrate empowers develope
 * **Adaptability to Changing Business Rules**: Disintegrate allows for easier evolution and adaptation to evolving business rules over time. By decoupling models from aggregates, developers gain the freedom to adjust and refine business concepts without heavy dependencies.
 
 * **TDD**: The library provides a `TestHarness` util to encourage the use of Test-Driven Development (TDD). To begin with your new application implementation, you should first write tests that describe your business logic. This way, you can ensure that your implementation satisfies your business invariants.
+
 `TestHarness` enables writing tests in **given-when-then** style. `given` represents past events, `when` is a decision, and `then` are the events emitted by the decision or an error:
 
     ```rust,ignore

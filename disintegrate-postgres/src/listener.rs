@@ -143,8 +143,8 @@ pub struct PgEventListenerError {
 /// # Properties:
 ///
 /// * `poll`: The `poll` property represents the interval at which the
-/// listener should poll for new events from the event store. This determines how frequently the
-/// event handler will handles new events.
+///   listener should poll for new events from the event store. This determines how frequently the
+///   event handler will handles new events.
 /// * `batch_size`: The `batch_size` property determines the number of events to be processed in a single batch.
 #[derive(Clone)]
 pub struct PgEventListenerConfig {
