@@ -82,7 +82,7 @@ impl<SS> DecisionMaker<SS> {
     /// # Parameters
     ///
     /// - `state_store`: The state store backend used by the `DecisionMaker` to load the current state
-    ///  and persist the decision.
+    ///   and persist the decision.
     pub fn new(state_store: SS) -> Self {
         Self { state_store }
     }
