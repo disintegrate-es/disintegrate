@@ -114,7 +114,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
         where E: disintegrate::Event + Clone, <#state_query_ident as disintegrate::StateQuery>::Event: Into<E>
          {
             fn from(state: #state_query_ident) -> Self {
-                disintegrate::query(Some(state.query().filter().clone()))
+                state.query().cast()
             }
         }
 
@@ -135,7 +135,7 @@ fn impl_state_query(event_type: Ident, identifiers_fields: &[&Ident]) -> TokenSt
     } else {
         let filters = impl_state_filters(identifiers_fields);
         quote! {
-            disintegrate::query!(#event_type, #filters)
+            disintegrate::query!(#event_type; #filters)
         }
     }
 }
@@ -151,7 +151,7 @@ fn impl_state_filters(identifiers_fields: &[&Ident]) -> Option<TokenStream> {
         let first = identifiers_fields[0];
         let rest = impl_state_filters(&identifiers_fields[1..]);
         Some(quote! {
-            ( #first == self.#first ) and ( #rest )
+             #first == self.#first, #rest 
         })
     }
 }

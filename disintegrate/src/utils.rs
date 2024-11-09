@@ -387,7 +387,7 @@ pub mod tests {
         type Event = ShoppingCartEvent;
 
         fn query(&self) -> StreamQuery<Self::Event> {
-            query!(ShoppingCartEvent, cart_id == self.cart_id.clone())
+            query!(ShoppingCartEvent; cart_id == self.cart_id.clone())
         }
     }
 

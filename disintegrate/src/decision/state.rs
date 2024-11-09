@@ -2,7 +2,7 @@
 use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::stream_query::{StreamFilter, StreamQuery};
+use crate::stream_query::StreamQuery;
 use crate::{all_the_tuples, union, BoxDynError, StateSnapshotter};
 use crate::{event::Event, PersistedEvent};
 use async_trait::async_trait;
@@ -198,7 +198,7 @@ pub trait StateQuery: Clone + Send + Sync {
     fn query(&self) -> StreamQuery<Self::Event>;
 }
 
-impl<S, E: Clone> From<&S> for StreamQuery<E>
+impl<S, E: Event + Clone> From<&S> for StreamQuery<E>
 where
     S: StateQuery<Event = E>,
 {
@@ -246,7 +246,7 @@ impl<S: StateQuery> StatePart<S> {
         U: Event + Clone,
         <S as StateQuery>::Event: Into<U>,
     {
-        matches_filter(event, self.query_part().convert().filter())
+        self.query_part().cast().matches(event)
     }
     pub fn mutate_part<E>(&mut self, event: PersistedEvent<E>)
     where
@@ -303,21 +303,6 @@ pub trait IntoState<T>: Sized {
     ///
     /// Returns the concrete state obtained from the `StatePart`.
     fn into_state(self) -> T;
-}
-
-fn matches_filter<E: Event>(event: &PersistedEvent<E>, filter: &StreamFilter) -> bool {
-    match filter {
-        StreamFilter::Events { names } => names.contains(&event.name()),
-        StreamFilter::ExcludeEvents { names } => !names.contains(&event.name()),
-        StreamFilter::Eq { ident, value } => event
-            .domain_identifiers()
-            .get(ident)
-            .map(|v| v == value)
-            .unwrap_or(true),
-        StreamFilter::And { l, r } => matches_filter(event, l) && matches_filter(event, r),
-        StreamFilter::Or { l, r } => matches_filter(event, l) || matches_filter(event, r),
-        StreamFilter::Origin { id } => event.id() > *id,
-    }
 }
 
 macro_rules! impl_from_state {
