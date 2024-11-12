@@ -50,7 +50,7 @@ impl ReadModelProjection {
         .execute(&pool)
         .await?;
         Ok(Self {
-            query: query(None),
+            query: query!(DomainEvent),
             pool,
         })
     }

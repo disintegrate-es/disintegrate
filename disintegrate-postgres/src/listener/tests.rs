@@ -141,10 +141,7 @@ async fn it_handles_events(pool: PgPool) {
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let _result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {
@@ -178,10 +175,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let append_result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {

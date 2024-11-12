@@ -340,7 +340,7 @@ pub mod tests {
         fn stream<'a, QE>(
             &'a self,
             query: &'a StreamQuery<QE>,
-        ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
+        ) -> BoxStream<'a, Result<PersistedEvent<QE>, Self::Error>>
         where
             QE: TryFrom<ShoppingCartEvent> + Event + 'static + Clone + Send + Sync,
             <QE as TryFrom<ShoppingCartEvent>>::Error: StdError + 'static + Send + Sync,

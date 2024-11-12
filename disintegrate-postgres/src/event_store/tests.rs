@@ -85,7 +85,7 @@ async fn it_queries_events(pool: PgPool) {
     insert_events(&pool, &events).await;
 
     // Test the stream function
-    let query = query!(ShoppingCartEvent, product_id == "product_1");
+    let query = query!(ShoppingCartEvent; product_id == "product_1");
     let result = event_store.stream(&query).collect::<Vec<_>>().await;
 
     assert_eq!(result.len(), 2);
@@ -104,7 +104,7 @@ async fn it_appends_events(pool: PgPool) {
         removed_event("product_2", "cart_1"),
     ];
 
-    let query = query!(ShoppingCartEvent, cart_id == "cart_1");
+    let query = query!(ShoppingCartEvent; cart_id == "cart_1");
 
     event_store.append(events, query.clone(), 0).await.unwrap();
 
@@ -150,20 +150,12 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
             .await
             .unwrap();
 
-    let query = query!(
-        ShoppingCartEvent,
-            (product_id == "product_1") or
-            (cart_id == "cart_1")
-    );
+    let query = query!(ShoppingCartEvent; product_id == "product_1", cart_id == "cart_1");
     event_store
         .append(vec![added_event("product_1", "cart_1")], query, 0)
         .await
         .unwrap();
-    let query = query!(
-        ShoppingCartEvent,
-            (product_id == "product_1") or
-            (cart_id == "cart_1")
-    );
+    let query = query!(ShoppingCartEvent; product_id == "product_1", cart_id == "cart_1");
     let result = event_store
         .append(vec![removed_event("product_1", "cart_1")], query, 0)
         .await;
@@ -186,7 +178,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
     ];
     insert_events(&pool, &events).await;
 
-    let query_1 = query!(ShoppingCartEvent, cart_id == "cart_1");
+    let query_1 = query!(ShoppingCartEvent; cart_id == "cart_1");
     let query_1_result = event_store
         .stream(&query_1)
         .collect::<Vec<_>>()
@@ -195,12 +187,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
-    let query_2 = query!(
-        ShoppingCartEvent,
-            (product_id == "product_1") or
-            (cart_id == "cart_1")
-
-    );
+    let query_2 = query!(ShoppingCartEvent; product_id == "product_1", cart_id == "cart_1");
     let query_2_result = event_store
         .stream(&query_2)
         .collect::<Vec<_>>()

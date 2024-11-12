@@ -89,7 +89,7 @@ where
     fn stream<'a, QE>(
         &'a self,
         query: &'a StreamQuery<QE>,
-    ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
+    ) -> BoxStream<'a, Result<PersistedEvent<QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,

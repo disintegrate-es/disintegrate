@@ -3,8 +3,7 @@
 //! This module provides an implementation of the `Snapshotter` trait using PostgreSQL as the underlying storage.
 //! It allows storing and retrieving snapshots from a PostgreSQL database.
 use async_trait::async_trait;
-use disintegrate::stream_query::StreamFilter;
-use disintegrate::{BoxDynError, IntoState, StateSnapshotter};
+use disintegrate::{BoxDynError, Event, IntoState, StateSnapshotter, StreamQuery};
 use disintegrate::{StatePart, StateQuery};
 use md5::{Digest, Md5};
 use serde::de::DeserializeOwned;
@@ -51,7 +50,7 @@ impl StateSnapshotter for PgSnapshotter {
     where
         S: Send + Sync + DeserializeOwned + StateQuery + 'static,
     {
-        let query = query_key(default.query().filter());
+        let query = query_key(&default.query());
         let stored_snapshot =
             sqlx::query("SELECT name, query, payload, version FROM snapshot where id = $1")
                 .bind(snapshot_id(S::NAME, &query))
@@ -76,7 +75,7 @@ impl StateSnapshotter for PgSnapshotter {
         if state.applied_events() <= self.every {
             return Ok(());
         }
-        let query = query_key(state.query().filter());
+        let query = query_key(&state.query());
         let id = snapshot_id(S::NAME, &query);
         let version = state.version();
         let payload = serde_json::to_string(&state.clone().into_state())?;
@@ -103,19 +102,8 @@ fn snapshot_id(state_name: &str, query: &str) -> Uuid {
     )
 }
 
-fn query_key(filter: &StreamFilter) -> String {
-    match filter {
-        StreamFilter::Events { names } => {
-            format!("({})", names.join(","))
-        }
-        StreamFilter::ExcludeEvents { names } => {
-            format!("not({})", names.join(","))
-        }
-        StreamFilter::Eq { ident, value } => format!("{ident}={value}"),
-        StreamFilter::And { l, r } => format!("{}&{}", query_key(l), query_key(r)),
-        StreamFilter::Or { l, r } => format!("{}|{}", query_key(l), query_key(r)),
-        StreamFilter::Origin { id } => format!(">={id}"),
-    }
+fn query_key<E: Event + Clone>(_query: &StreamQuery<E>) -> String {
+    todo!()
 }
 
 pub async fn setup(pool: &PgPool) -> Result<(), Error> {

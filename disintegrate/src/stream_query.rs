@@ -201,6 +201,7 @@ macro_rules! filter {
         {
             #[allow(dead_code)]
             {
+                use $crate::Event;
                 // Check if the domain identifiers exist
                 const DOMAIN_IDENTIFIERS: &[&$crate::DomainIdentifierInfo] = <$event_ty>::SCHEMA.domain_identifiers;
                 const DOMAIN_IDENTIFIERS_INDENTS: &[&str] = &$crate::const_slice_iter!(DOMAIN_IDENTIFIERS, const fn map(item: &$crate::DomainIdentifierInfo) -> &str {
@@ -288,7 +289,6 @@ impl<E: Event + Clone> StreamFilter<E> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::ident;
     use crate::utils::tests::*;
     use crate::IdentifierValue;
