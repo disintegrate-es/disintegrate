@@ -195,7 +195,7 @@ macro_rules! event_types{
 #[doc(hidden)]
 macro_rules! filter {
     ($origin:expr => $event_ty:ty; $($ident:ident == $value:expr),*) =>{
-        $crate::filter!($event_ty; $($ident == $value),*).origin($origin)
+        $crate::filter!($event_ty; $($ident == $value),*).change_origin($origin)
     };
     ($event_ty:ty; $($ident:ident == $value:expr),*) =>{
         {
@@ -261,7 +261,7 @@ impl<E: Event + Clone> StreamFilter<E> {
         }
     }
 
-    pub fn origin(self, origin: i64) -> Self {
+    pub fn change_origin(self, origin: i64) -> Self {
         Self { origin, ..self }
     }
 
@@ -284,6 +284,22 @@ impl<E: Event + Clone> StreamFilter<E> {
             excluded_events: self.excluded_events.clone(),
             event_type: PhantomData::default(),
         }
+    }
+
+    pub fn events(&self) -> &'static [&'static str] {
+        self.events
+    }
+
+    pub fn identifiers(&self) -> &DomainIdentifierSet {
+        &self.identifiers
+    }
+
+    pub fn origin(&self) -> i64 {
+        self.origin
+    }
+
+    pub fn excluded_events(&self) -> Option<&Vec<&'static str>> {
+        self.excluded_events.as_ref()
     }
 }
 

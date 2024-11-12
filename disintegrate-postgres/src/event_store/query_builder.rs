@@ -54,9 +54,65 @@ where
         self.builder.build()
     }
 
-    fn build_criteria(&mut self, _query: StreamQuery<QE>) {
-        todo!()
+    fn build_criteria(&mut self, query: StreamQuery<QE>) {
+        let mut filters = query.filters().iter().peekable();
+
+        while let Some(filter) = filters.next() {
+            self.builder.push("(");
+            self.builder.push(event_types_in(filter.events()));
+
+            if let Some(excluded_events) = filter.excluded_events() {
+                self.builder.push(" AND ");
+                self.builder.push(event_types_not_in(excluded_events));
+            }
+
+            if filter.origin() > 0 {
+                self.builder.push(" AND event_id = ");
+                self.builder.push(filter.origin());
+            }
+
+            let mut identifiers = filter.identifiers().iter();
+            while let Some((ident, value)) = identifiers.next() {
+                self.builder.push(" AND ");
+                self.builder.push(format!("({ident} = "));
+                match value {
+                    disintegrate::IdentifierValue::String(value) => {
+                        self.builder.push_bind(value.clone())
+                    }
+                    disintegrate::IdentifierValue::i64(value) => self.builder.push_bind(*value),
+                    disintegrate::IdentifierValue::Uuid(value) => self.builder.push_bind(*value),
+                };
+                self.builder.push(format!(" or {ident} = NULL)"));
+            }
+
+            self.builder.push(")");
+            if filters.peek().is_some() {
+                self.builder.push(" AND ");
+            }
+        }
     }
+}
+
+fn event_types_in(types: &[&str]) -> String {
+    format!(
+        "event_type IN ({})",
+        types
+            .iter()
+            .map(|t| format!("'{t}'"))
+            .collect::<Vec<String>>()
+            .join(",")
+    )
+}
+
+fn event_types_not_in(types: &[&str]) -> String {
+    format!(
+        "event_type NOT IN ({})",
+        types
+            .iter()
+            .map(|t| format!("'{t}'"))
+            .collect::<Vec<String>>()
+            .join(",")
+    )
 }
 
 #[cfg(test)]
@@ -104,7 +160,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo')) AND (foo_id in ($1,NULL))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo'))"#
         );
     }
 
@@ -115,7 +171,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo')) AND (foo_id in ($1,NULL))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND (foo_id = $1 or foo_id = NULL))"#
         );
     }
 
@@ -126,7 +182,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo')) AND ((foo_id in ($1,NULL)) AND (bar_id in ($2,NULL)))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND (bar_id = $1 or bar_id = NULL) AND (foo_id = $2 or foo_id = NULL))"#,
         );
     }
 
@@ -137,7 +193,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_id > $1) AND ((event_type IN ('Bar','Foo')) AND (foo_id in ($2,NULL)))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND event_id = 10 AND (foo_id = $1 or foo_id = NULL))"#
         );
     }
 
@@ -149,7 +205,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo')) AND ((bar_id in ($1,NULL)) AND (event_type IN ('Foo')))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND (bar_id = $1 or bar_id = NULL)) AND (event_type IN ('Bar','Foo') AND (foo_id = $2 or foo_id = NULL))"#
         );
     }
 
@@ -161,7 +217,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type NOT IN ('Bar')) AND ((event_type IN ('Bar','Foo')) AND ((bar_id in ($1,NULL)) AND (event_type IN ('Foo'))))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND event_type NOT IN ('Bar') AND (bar_id = $1 or bar_id = NULL))"#
         );
     }
 }
