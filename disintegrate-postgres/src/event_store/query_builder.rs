@@ -67,12 +67,13 @@ where
             } else {
                 filter.events().to_vec()
             };
+            let has_events = !events.is_empty();
             self.builder.push("(");
             if filter.origin() > 0 {
                 self.builder.push("event_id > ");
                 self.builder.push(filter.origin());
-                if !events.is_empty() {
-                    self.builder.push(" AND ");
+                if has_events {
+                    self.builder.push(" AND (");
                 }
             }
 
@@ -104,6 +105,9 @@ where
                 }
                 self.builder.push(")");
                 events.peek().map(|_| self.builder.push(" OR "));
+            }
+            if filter.origin() > 0 && has_events {
+                self.builder.push(")");
             }
             self.builder.push(")");
             filters.peek().map(|_| self.builder.push(" OR "));
@@ -199,7 +203,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            "SELECT * FROM event WHERE (event_id > 10 AND (event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = $1))"
+            "SELECT * FROM event WHERE (event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = $1)))"
         );
     }
 

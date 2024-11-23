@@ -163,9 +163,9 @@ where
             format!(r#"UPDATE event_sequence SET consumed = consumed + 1, committed = (event_id = ANY('{{{persisted_event_ids}}}'))
                        WHERE event_id IN ({persisted_event_ids}) 
                        OR ((consumed = 0 OR committed = true) 
-                       AND (event_id <= {last_event_id} AND "#).as_str(),
+                       AND (event_id <= {last_event_id} AND ("#).as_str(),
         )
-        .end_with("))");
+        .end_with(")))");
 
         consume_sql
             .build()

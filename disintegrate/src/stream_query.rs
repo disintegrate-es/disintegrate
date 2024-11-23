@@ -124,7 +124,7 @@ impl<E: Event + Clone> StreamQuery<E> {
                 return false;
             }
 
-            if event.id() < filter.origin {
+            if event.id() <= filter.origin {
                 return false;
             }
 
