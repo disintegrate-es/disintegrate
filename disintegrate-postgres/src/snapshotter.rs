@@ -102,8 +102,27 @@ fn snapshot_id(state_name: &str, query: &str) -> Uuid {
     )
 }
 
-fn query_key<E: Event + Clone>(_query: &StreamQuery<E>) -> String {
-    todo!()
+fn query_key<E: Event + Clone>(query: &StreamQuery<E>) -> String {
+    let mut result = String::new();
+    for f in query.filters() {
+        let excluded_events = if let Some(exclued_events) = f.excluded_events() {
+            format!("-{}", exclued_events.join(","))
+        } else {
+            "".to_string()
+        };
+        result += &format!(
+            "({}|{}{}|{})",
+            f.origin(),
+            f.events().join(","),
+            excluded_events,
+            f.identifiers()
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    }
+    result
 }
 
 pub async fn setup(pool: &PgPool) -> Result<(), Error> {
