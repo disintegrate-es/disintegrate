@@ -80,20 +80,11 @@ where
             while let Some(event) = events.next() {
                 self.builder.push("(");
                 self.builder.push(format!("event_type = '{event}'"));
-                let event_info = QE::SCHEMA
-                    .events_info
-                    .iter()
-                    .find(|info| info.name == event)
-                    .unwrap();
+                let event_info = QE::SCHEMA.event_info(event).unwrap();
                 let mut event_identifiers = filter
                     .identifiers()
                     .iter()
-                    .filter(|(ident, _)| {
-                        event_info
-                            .domain_identifiers
-                            .iter()
-                            .any(|domain_ident| domain_ident == ident)
-                    })
+                    .filter(|(ident, _)| event_info.has_domain_identifier(ident))
                     .peekable();
 
                 event_identifiers.peek().map(|_| self.builder.push(" AND "));

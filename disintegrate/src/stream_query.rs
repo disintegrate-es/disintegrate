@@ -148,12 +148,12 @@ where
     if let Some(filter) = filter {
         StreamQuery {
             filters: vec![filter.cast()],
-            event_type: PhantomData::default(),
+            event_type: PhantomData,
         }
     } else {
         StreamQuery {
             filters: vec![StreamFilter::new(domain_identifiers!())],
-            event_type: PhantomData::default(),
+            event_type: PhantomData,
         }
     }
 }
@@ -257,7 +257,7 @@ impl<E: Event + Clone> StreamFilter<E> {
             identifiers,
             origin: 0,
             excluded_events: None,
-            event_type: PhantomData::default(),
+            event_type: PhantomData,
         }
     }
 
@@ -282,7 +282,7 @@ impl<E: Event + Clone> StreamFilter<E> {
             identifiers: self.identifiers.clone(),
             origin: self.origin,
             excluded_events: self.excluded_events.clone(),
-            event_type: PhantomData::default(),
+            event_type: PhantomData,
         }
     }
 

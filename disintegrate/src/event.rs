@@ -14,6 +14,12 @@ pub struct EventInfo {
     pub domain_identifiers: &'static [&'static Identifier],
 }
 
+impl EventInfo {
+    pub fn has_domain_identifier(&self, ident: &Identifier) -> bool {
+        self.domain_identifiers.iter().any(|id| *id == ident)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct DomainIdentifierInfo {
     pub ident: Identifier,
@@ -25,6 +31,15 @@ pub struct EventSchema {
     pub events: &'static [&'static str],
     pub events_info: &'static [&'static EventInfo],
     pub domain_identifiers: &'static [&'static DomainIdentifierInfo],
+}
+
+impl EventSchema {
+    pub fn event_info(&self, name: &str) -> Option<&EventInfo> {
+        self.events_info
+            .iter()
+            .find(|info| info.name == name)
+            .copied()
+    }
 }
 
 /// Represents an event in the event store.
