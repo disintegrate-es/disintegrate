@@ -94,11 +94,34 @@ where
             executor.init().await?;
             let executor = executor.clone();
             let shutdown = self.shutdown_token.clone();
+            let pool = self.event_store.pool.clone();
+            let (events_listener_tx, mut events_listener_rx) = tokio::sync::watch::channel(true);
+            if executor.config().listener_enabled() {
+                let watch_new_events = tokio::spawn(async move {
+                    let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
+                    listener.listen("new_events").await?;
+                    loop {
+                        tokio::select! {
+                            msg = listener.try_recv() => {
+                                match msg {
+                                    Ok(_) => { events_listener_tx.send_replace(true); },
+                                    Err(err @ sqlx::Error::PoolClosed) => return Err(Error::Database(err)),
+                                    _ => (),
+                                }
+                            }
+                            _ = shutdown.cancelled() => return Ok::<(), Error>(()),
+                        }
+                    }
+                });
+                handles.push(watch_new_events);
+            }
+            let shutdown = self.shutdown_token.clone();
             let handle = tokio::spawn(async move {
                 let mut poll = tokio::time::interval(executor.config().poll());
                 poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     tokio::select! {
+                        Ok(()) = events_listener_rx.changed() => executor.execute().await?,
                         _ = poll.tick() => executor.execute().await?,
                         _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                     };
@@ -150,6 +173,7 @@ pub struct PgEventListenerError {
 pub struct PgEventListenerConfig {
     poll: Duration,
     batch_size: usize,
+    listener_enabled: bool,
 }
 
 impl PgEventListenerConfig {
@@ -166,6 +190,7 @@ impl PgEventListenerConfig {
         Self {
             poll,
             batch_size: 100,
+            listener_enabled: false,
         }
     }
 
@@ -180,6 +205,16 @@ impl PgEventListenerConfig {
     /// The updated `PgEventListenerConfig` instance with the batch size set.
     pub fn with_batch_size(mut self, batch_size: usize) -> Self {
         self.batch_size = batch_size;
+        self
+    }
+
+    /// Sets the db listener.
+    ///
+    /// # Returns
+    ///
+    /// The updated `PgEventListenerConfig` instance with the db listener set.
+    pub fn with_listener(mut self) -> Self {
+        self.listener_enabled = true;
         self
     }
 
@@ -199,6 +234,15 @@ impl PgEventListenerConfig {
     /// The batch size.
     pub fn batch_size(&self) -> usize {
         self.batch_size
+    }
+
+    /// Returns if the db listener is enabled or disabled.
+    ///
+    /// # Returns
+    ///
+    /// True if the db listener is enabled, false otherwise.
+    pub fn listener_enabled(&self) -> bool {
+        self.listener_enabled
     }
 }
 
@@ -361,5 +405,13 @@ async fn setup(pool: &PgPool) -> Result<(), Error> {
     sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
         .execute(pool)
         .await?;
+    sqlx::query(include_str!("listener/sql/fn_notify_event_listener.sql"))
+        .execute(pool)
+        .await?;
+    sqlx::query(include_str!(
+        "listener/sql/trigger_notify_event_listener.sql"
+    ))
+    .execute(pool)
+    .await?;
     Ok(())
 }
