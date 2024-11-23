@@ -211,9 +211,11 @@ pub mod tests {
     use std::{error::Error as StdError, fmt};
 
     use crate::{
-        domain_identifiers, event::DomainIdentifierInfo, ident, query, BoxDynError, Decision,
-        DomainIdentifierSet, Event, EventSchema, EventStore, IdentifierType, PersistedEvent,
-        StateMutate, StatePart, StateQuery, StateSnapshotter, StreamQuery,
+        domain_identifiers,
+        event::{DomainIdentifierInfo, EventInfo},
+        ident, query, BoxDynError, Decision, DomainIdentifierSet, Event, EventSchema, EventStore,
+        IdentifierType, PersistedEvent, StateMutate, StatePart, StateQuery, StateSnapshotter,
+        StreamQuery,
     };
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -250,7 +252,17 @@ pub mod tests {
 
     impl Event for ShoppingCartEvent {
         const SCHEMA: EventSchema = EventSchema {
-            types: &["ItemAdded", "ItemRemoved"],
+            events: &["ItemAdded", "ItemRemoved"],
+            events_info: &[
+                &EventInfo {
+                    name: "ItemAdded",
+                    domain_identifiers: &[&ident!(#item_id), &ident!(#cart_id)],
+                },
+                &EventInfo {
+                    name: "ItemRemoved",
+                    domain_identifiers: &[&ident!(#item_id), &ident!(#cart_id)],
+                },
+            ],
             domain_identifiers: &[
                 &DomainIdentifierInfo {
                     ident: ident!(#cart_id),

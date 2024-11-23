@@ -120,7 +120,7 @@ mod tests {
     use super::*;
     use disintegrate::{
         domain_identifiers, event_types, ident, query, DomainIdentifierInfo, DomainIdentifierSet,
-        Event, EventSchema, IdentifierType,
+        Event, EventInfo, EventSchema, IdentifierType,
     };
     use sqlx::Execute;
 
@@ -133,7 +133,17 @@ mod tests {
 
     impl Event for TestEvent {
         const SCHEMA: EventSchema = EventSchema {
-            types: &["Bar", "Foo"],
+            events: &["Bar", "Foo"],
+            events_info: &[
+                &EventInfo {
+                    name: "Bar",
+                    domain_identifiers: &[&ident!(#bar_id)],
+                },
+                &EventInfo {
+                    name: "Foo",
+                    domain_identifiers: &[&ident!(#foo_id)],
+                },
+            ],
             domain_identifiers: &[
                 &DomainIdentifierInfo {
                     ident: ident!(#foo_id),

@@ -121,10 +121,43 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
                 Fields::Unit => quote!(disintegrate::const_slices_concat!(&disintegrate::DomainIdentifierInfo, #acc, &[])),
             });
 
-    let types = data
+    let events = data
         .variants
         .iter()
         .map(|variant| variant.ident.to_string());
+
+    let events_info= data
+        .variants
+        .iter()
+        .fold(quote!(&[]), |acc, variant| {
+           let variant_ident = &variant.ident.to_string();
+            match &variant.fields {
+            Fields::Unnamed(fields) => {
+                let payload_field = fields.unnamed.first().unwrap();
+                let payload_type = enum_unnamed_field_type(payload_field);
+                quote! {
+                    disintegrate::const_slices_concat!(
+                        &disintegrate::EventInfo,
+                        #acc,
+                        #payload_type::SCHEMA.events_info
+                    )
+                }
+            }
+            Fields::Named(fields) => {
+                let identifiers_idents: Vec<_> = fields
+                    .named
+                    .iter()
+                    .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
+                    .map(|f| f.ident.as_ref())
+                    .collect();
+                quote! {
+                    disintegrate::const_slices_concat!(&disintegrate::EventInfo, #acc, &[&disintegrate::EventInfo{name: #variant_ident, domain_identifiers: &[#(&disintegrate::ident!(##identifiers_idents),)*]}])
+                }
+            }
+            Fields::Unit => quote!(
+                disintegrate::const_slices_concat!(&disintegrate::EventInfo, #acc, &[EventInfo{name: #variant_ident, domain_identifiers: &[]}])
+            ),
+        }});
 
     let impl_domain_identifiers_schema = quote! {
         disintegrate::const_slice_unique!(&disintegrate::DomainIdentifierInfo, #domain_identifiers_slice, const fn compare(a: &disintegrate::DomainIdentifierInfo, b: &disintegrate::DomainIdentifierInfo) -> i8 {
@@ -139,7 +172,8 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
         #[automatically_derived]
         impl disintegrate::Event for #name {
             const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema {
-                types: &[#(#types,)*],
+                events: &[#(#events,)*],
+                events_info: #events_info,
                 domain_identifiers: #impl_domain_identifiers_schema,
             };
 
@@ -198,7 +232,11 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> Result<TokenStream> {
     Ok(quote! {
         #[automatically_derived]
         impl disintegrate::Event for #name {
-            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{types: &[#impl_type], domain_identifiers:&[#(&disintegrate::DomainIdentifierInfo{ident: disintegrate::ident!(##identifiers_idents), type_info: <#identifiers_types as disintegrate::IntoIdentifierValue>::TYPE},)*]};
+            const SCHEMA: disintegrate::EventSchema = disintegrate::EventSchema{
+                events: &[#impl_type],
+                events_info: &[&disintegrate::EventInfo{name: #impl_type, domain_identifiers: &[#(&disintegrate::ident!(##identifiers_idents),)*]}],
+                domain_identifiers:&[#(&disintegrate::DomainIdentifierInfo{ident: disintegrate::ident!(##identifiers_idents), type_info: <#identifiers_types as disintegrate::IntoIdentifierValue>::TYPE},)*]
+            };
 
             fn name(&self) -> &'static str {
                 #impl_type

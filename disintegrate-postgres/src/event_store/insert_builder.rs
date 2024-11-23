@@ -121,8 +121,8 @@ where
 #[cfg(test)]
 mod tests {
     use disintegrate::{
-        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventSchema,
-        IdentifierType,
+        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+        EventSchema, IdentifierType,
     };
     use serde::{Deserialize, Serialize};
     use sqlx::Execute;
@@ -146,7 +146,17 @@ mod tests {
 
     impl Event for ShoppingCartEvent {
         const SCHEMA: EventSchema = EventSchema {
-            types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+            events: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+            events_info: &[
+                &EventInfo {
+                    name: "ShoppingCartAdded",
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                },
+                &EventInfo {
+                    name: "ShoppingCartRemoved",
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                },
+            ],
             domain_identifiers: &[
                 &DomainIdentifierInfo {
                     ident: ident!(#cart_id),

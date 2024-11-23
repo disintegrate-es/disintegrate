@@ -8,6 +8,12 @@
 use crate::{domain_identifier::DomainIdentifierSet, Identifier, IdentifierType};
 use std::ops::Deref;
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EventInfo {
+    pub name: &'static str,
+    pub domain_identifiers: &'static [&'static Identifier],
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct DomainIdentifierInfo {
     pub ident: Identifier,
@@ -16,7 +22,8 @@ pub struct DomainIdentifierInfo {
 
 #[derive(Debug, Clone)]
 pub struct EventSchema {
-    pub types: &'static [&'static str],
+    pub events: &'static [&'static str],
+    pub events_info: &'static [&'static EventInfo],
     pub domain_identifiers: &'static [&'static DomainIdentifierInfo],
 }
 

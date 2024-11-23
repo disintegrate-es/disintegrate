@@ -179,14 +179,14 @@ macro_rules! event_types{
     ($event_ty:ty, [$($events:ty),+]) =>{
         {
             use $crate::Event;
-            const TYPES: &[&str] = {
+            const EVENTS: &[&str] = {
                 const FILTER_ARG: &[&str] = &[$(stringify!($events),)+];
-                   if !$crate::utils::include(<$event_ty>::SCHEMA.types, FILTER_ARG) {
-                    panic!("one or more of the specified events do not exist");
-                }
+                   if !$crate::utils::include(<$event_ty>::SCHEMA.events, FILTER_ARG) {
+                        panic!("one or more of the specified events do not exist");
+                   }
                 FILTER_ARG
             };
-            TYPES
+            EVENTS
         }
     };
 }
@@ -253,7 +253,7 @@ pub struct StreamFilter<E: Event + Clone> {
 impl<E: Event + Clone> StreamFilter<E> {
     pub fn new(identifiers: DomainIdentifierSet) -> Self {
         Self {
-            events: E::SCHEMA.types,
+            events: E::SCHEMA.events,
             identifiers,
             origin: 0,
             excluded_events: None,

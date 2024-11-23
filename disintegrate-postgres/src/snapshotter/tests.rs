@@ -1,5 +1,5 @@
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
     EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
 };
 use disintegrate_serde::{serde::json::Json, Deserializer};
@@ -16,7 +16,11 @@ enum CartEvent {
 
 impl Event for CartEvent {
     const SCHEMA: EventSchema = EventSchema {
-        types: &["CartEventItemAdded"],
+        events: &["CartEventItemAdded"],
+        events_info: &[&EventInfo {
+            name: "CartProductAdded",
+            domain_identifiers: &[&ident!(#cart_id), &ident!(#product_id)],
+        }],
         domain_identifiers: &[
             &DomainIdentifierInfo {
                 ident: ident!(#cart_id),

@@ -119,8 +119,8 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
         }
 
         impl #state_query_ident {
-            pub fn exclude_events(&self, types: &'static [&'static str]) -> disintegrate::StreamQuery<<Self as disintegrate::StateQuery>::Event> {
-                self.query().exclude_events(types)
+            pub fn exclude_events(&self, events: &'static [&'static str]) -> disintegrate::StreamQuery<<Self as disintegrate::StateQuery>::Event> {
+                self.query().exclude_events(events)
             }
         }
 
@@ -151,7 +151,7 @@ fn impl_state_filters(identifiers_fields: &[&Ident]) -> Option<TokenStream> {
         let first = identifiers_fields[0];
         let rest = impl_state_filters(&identifiers_fields[1..]);
         Some(quote! {
-             #first == self.#first, #rest 
+             #first == self.#first, #rest
         })
     }
 }

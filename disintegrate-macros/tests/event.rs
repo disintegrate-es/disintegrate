@@ -39,7 +39,7 @@ enum DomainEvent {
 #[test]
 fn it_correctly_sets_event_names() {
     assert_eq!(
-        DomainEvent::SCHEMA.types,
+        DomainEvent::SCHEMA.events,
         &[
             "UserCreated",
             "UserUpdated",
@@ -131,12 +131,12 @@ fn it_generates_event_streams() {
     );
 
     assert_eq!(
-        UserEvent::SCHEMA.types,
+        UserEvent::SCHEMA.events,
         &["UserCreated", "UserUpdated", "UserDeleted"]
     );
 
     assert_eq!(
-        OrderEvent::SCHEMA.types,
+        OrderEvent::SCHEMA.events,
         &["OrderCreated", "OrderCancelled"]
     );
 }

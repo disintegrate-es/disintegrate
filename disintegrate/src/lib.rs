@@ -19,7 +19,7 @@ pub use crate::decision::{
 #[doc(inline)]
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
 #[doc(inline)]
-pub use crate::event::{DomainIdentifierInfo, Event, EventSchema, PersistedEvent};
+pub use crate::event::{DomainIdentifierInfo, Event, EventInfo, EventSchema, PersistedEvent};
 #[doc(inline)]
 pub use crate::event_store::EventStore;
 #[doc(inline)]
