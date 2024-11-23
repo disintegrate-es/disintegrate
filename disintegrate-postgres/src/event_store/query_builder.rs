@@ -67,7 +67,7 @@ where
             }
 
             if filter.origin() > 0 {
-                self.builder.push(" AND event_id = ");
+                self.builder.push(" AND event_id > ");
                 self.builder.push(filter.origin());
             }
 
@@ -193,7 +193,7 @@ mod tests {
 
         assert_eq!(
             sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND event_id = 10 AND (foo_id = $1 or foo_id = NULL))"#
+            r#"SELECT * FROM event WHERE (event_type IN ('Bar','Foo') AND event_id > 10 AND (foo_id = $1 or foo_id = NULL))"#
         );
     }
 
