@@ -136,11 +136,19 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
                 let payload_field = fields.unnamed.first().unwrap();
                 let payload_type = enum_unnamed_field_type(payload_field);
                 quote! {
-                    disintegrate::const_slices_concat!(
-                        &disintegrate::EventInfo,
-                        #acc,
-                        #payload_type::SCHEMA.events_info
-                    )
+                    {
+                        const EVENT_INFO: &[&disintegrate::EventInfo] = {
+                            if #payload_type::SCHEMA.events_info.len() != 1 {
+                                panic!(concat!("Event variant ", #variant_ident, " must contain a struct"));
+                            }
+                            &[&disintegrate::EventInfo{name: #variant_ident, domain_identifiers: #payload_type::SCHEMA.events_info[0].domain_identifiers}]
+                        };
+                        disintegrate::const_slices_concat!(
+                            &disintegrate::EventInfo,
+                            #acc,
+                            EVENT_INFO
+                        )
+                    }
                 }
             }
             Fields::Named(fields) => {
@@ -155,7 +163,7 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
                 }
             }
             Fields::Unit => quote!(
-                disintegrate::const_slices_concat!(&disintegrate::EventInfo, #acc, &[EventInfo{name: #variant_ident, domain_identifiers: &[]}])
+                disintegrate::const_slices_concat!(&disintegrate::EventInfo, #acc, &[&disintegrate::EventInfo{name: #variant_ident, domain_identifiers: &[]}])
             ),
         }});
 

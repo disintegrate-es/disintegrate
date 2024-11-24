@@ -122,6 +122,7 @@ macro_rules! const_slice_iter {
     ($slice:ident, $map:stmt) => {{
         $map
         let mut out: [_; $slice.len()] = if $slice.len() == 0 {
+            #[allow(clippy::missing_transmute_annotations)]
             unsafe { std::mem::transmute([0u8; std::mem::size_of::<&str>() * $slice.len()]) }
         } else {
             [""; $slice.len()]
