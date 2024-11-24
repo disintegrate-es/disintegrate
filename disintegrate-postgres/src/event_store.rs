@@ -160,12 +160,12 @@ where
         let mut tx = self.pool.begin().await?;
         let mut consume_sql = QueryBuilder::new(
             query.change_origin(version),
-            format!(r#"UPDATE event_sequence SET consumed = consumed + 1, committed = (event_id = ANY('{{{persisted_event_ids}}}'))
-                       WHERE event_id IN ({persisted_event_ids}) 
+            format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{persisted_event_ids}}}'))
+                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({persisted_event_ids}) 
                        OR ((consumed = 0 OR committed = true) 
                        AND (event_id <= {last_event_id} AND ("#).as_str(),
         )
-        .end_with(")))");
+        .end_with("))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id");
 
         consume_sql
             .build()
