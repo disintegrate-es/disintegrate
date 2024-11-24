@@ -118,6 +118,7 @@ pub fn impl_stream(parent: &DeriveInput, stream: &DeriveInput) -> Result<TokenSt
     let (event_impl, event_ty, event_where) = parent.generics.split_for_impl();
 
     Ok(quote! {
+        #[allow(clippy::enum_variant_names)]
         #[derive(Clone, Debug, PartialEq, Eq)]
         #stream
 
