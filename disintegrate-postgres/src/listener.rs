@@ -90,14 +90,13 @@ where
     pub async fn start(self) -> Result<(), Error> {
         setup(&self.event_store.pool).await?;
         let mut handles = vec![];
-        for executor in self.executors {
-            executor.init().await?;
-            let executor = executor.clone();
-            let shutdown = self.shutdown_token.clone();
+        let listener_enabled = self.executors.iter().any(|e| e.config().listener_enabled());
+        let (events_listener_tx, events_listener_rx) = tokio::sync::watch::channel(true);
+        if listener_enabled {
             let pool = self.event_store.pool.clone();
-            let (events_listener_tx, mut events_listener_rx) = tokio::sync::watch::channel(true);
-            if executor.config().listener_enabled() {
-                let watch_new_events = tokio::spawn(async move {
+            let shutdown = self.shutdown_token.clone();
+            let watch_new_events = tokio::spawn(async move {
+                loop {
                     let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
                     listener.listen("new_events").await?;
                     loop {
@@ -106,22 +105,28 @@ where
                                 match msg {
                                     Ok(_) => { events_listener_tx.send_replace(true); },
                                     Err(err @ sqlx::Error::PoolClosed) => return Err(Error::Database(err)),
-                                    _ => (),
+                                    Err(_) => break,
                                 }
                             }
                             _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                         }
                     }
-                });
-                handles.push(watch_new_events);
-            }
+                }
+            });
+            handles.push(watch_new_events);
+        }
+        for executor in self.executors {
+            executor.init().await?;
+            let executor = executor.clone();
             let shutdown = self.shutdown_token.clone();
+            let mut events_listener_rx = events_listener_rx.clone();
+            let listener_enabled = executor.config().listener_enabled();
             let handle = tokio::spawn(async move {
                 let mut poll = tokio::time::interval(executor.config().poll());
                 poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     tokio::select! {
-                        Ok(()) = events_listener_rx.changed() => executor.execute().await?,
+                        Some(Ok(())) = async { if listener_enabled {  let res = events_listener_rx.changed().await; Some(res) } else { None } } => executor.execute().await?,
                         _ = poll.tick() => executor.execute().await?,
                         _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                     };
