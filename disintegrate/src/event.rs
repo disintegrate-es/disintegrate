@@ -8,24 +8,37 @@
 use crate::{domain_identifier::DomainIdentifierSet, Identifier, IdentifierType};
 use std::ops::Deref;
 
+/// Represents the schema of all supported events.
+/// 
+/// The event info contains the name of the event and the domain identifiers associated with it.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EventInfo {
+    /// The name of the event.
     pub name: &'static str,
+    /// The domain identifiers associated with the event.
     pub domain_identifiers: &'static [&'static Identifier],
 }
 
 impl EventInfo {
+    /// Returns true if the event has the given domain identifier.
     pub fn has_domain_identifier(&self, ident: &Identifier) -> bool {
         self.domain_identifiers.iter().any(|id| *id == ident)
     }
 }
 
+/// Represents the domain identifier and its type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct DomainIdentifierInfo {
+    /// The domain identifier.
     pub ident: Identifier,
+    /// The type of the domain identifier.
     pub type_info: IdentifierType,
 }
 
+/// Represents the schema of all supported events.
+/// 
+/// The schema contains the names of all supported events,
+/// the domain identifiers associated with them, and the domain identifiers' types.
 #[derive(Debug, Clone)]
 pub struct EventSchema {
     pub events: &'static [&'static str],

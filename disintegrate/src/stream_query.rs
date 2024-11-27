@@ -36,6 +36,7 @@ impl<E: Event + Clone> StreamQuery<E> {
         &self.filters
     }
 
+    /// Casts the stream query to a different event type.
     pub fn cast<U>(&self) -> StreamQuery<U>
     where
         E: Event + Into<U>,
@@ -47,6 +48,7 @@ impl<E: Event + Clone> StreamQuery<E> {
         }
     }
 
+    /// Unions two stream queries into a single query.
     pub fn union<U, O>(&self, other: &StreamQuery<O>) -> StreamQuery<U>
     where
         E: Event + Into<U>,
@@ -66,6 +68,9 @@ impl<E: Event + Clone> StreamQuery<E> {
         }
     }
 
+    /// Changes the origin of the stream query.
+    ///
+    /// The origin determines the starting point of the query within the event stream.
     pub fn change_origin(self, origin: i64) -> Self {
         let filters = self
             .filters
@@ -82,6 +87,9 @@ impl<E: Event + Clone> StreamQuery<E> {
         }
     }
 
+    /// Excludes the specified events from the stream query.
+    ///
+    /// The excluded events are not included in the query results.
     pub fn exclude_events(self, excluded_events: &'static [&'static str]) -> Self {
         let filters = self
             .filters
@@ -104,6 +112,7 @@ impl<E: Event + Clone> StreamQuery<E> {
         }
     }
 
+    /// Checks if the stream query matches the given event.
     pub fn matches(&self, event: &PersistedEvent<E>) -> bool {
         self.filters.iter().any(|filter| {
             if let Some(excluded_events) = &filter.excluded_events {
@@ -191,6 +200,7 @@ macro_rules! event_types{
     };
 }
 
+/// Creates stream filters for querying event streams.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! filter {
@@ -224,6 +234,7 @@ macro_rules! filter {
     };
 }
 
+/// unions two or more stream queries into a single query.
 #[macro_export]
 macro_rules! union {
     ($query:expr) =>{
@@ -241,16 +252,25 @@ macro_rules! union {
     };
 }
 
+/// Represents a filter applied to an event stream.
+///
+/// A `StreamFilter` is used to define filters and constraints for querying event streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StreamFilter<E: Event + Clone> {
+    /// The names of the events to include in the query results.
     events: &'static [&'static str],
+    /// The domain identifiers and values used to filter the events.
     identifiers: DomainIdentifierSet,
+    /// The starting point of the query within the event stream.
     origin: i64,
+    /// The names of the events to exclude from the query results.
     excluded_events: Option<Vec<&'static str>>,
+    /// A marker indicating the event type associated with the stream filter.
     event_type: PhantomData<E>,
 }
 
 impl<E: Event + Clone> StreamFilter<E> {
+    /// Creates a new stream filter with the specified domain identifiers.
     pub fn new(identifiers: DomainIdentifierSet) -> Self {
         Self {
             events: E::SCHEMA.events,
@@ -261,10 +281,12 @@ impl<E: Event + Clone> StreamFilter<E> {
         }
     }
 
+    /// Changes the origin of the stream filter.
     pub fn change_origin(self, origin: i64) -> Self {
         Self { origin, ..self }
     }
 
+    /// Excludes the specified events from the stream filter.
     pub fn exclude_events(self, excluded_events: &'static [&'static str]) -> Self {
         Self {
             excluded_events: Some(excluded_events.to_vec()),
@@ -272,6 +294,7 @@ impl<E: Event + Clone> StreamFilter<E> {
         }
     }
 
+    /// Casts the stream filter to a different event type.
     pub fn cast<O>(&self) -> StreamFilter<O>
     where
         E: Event + Into<O>,
@@ -286,18 +309,22 @@ impl<E: Event + Clone> StreamFilter<E> {
         }
     }
 
+    /// Returns the names of the events to include in the query results.
     pub fn events(&self) -> &'static [&'static str] {
         self.events
     }
 
+    /// Returns the domain identifiers used to filter the events.
     pub fn identifiers(&self) -> &DomainIdentifierSet {
         &self.identifiers
     }
 
+    /// Returns the starting point of the query within the event stream.
     pub fn origin(&self) -> i64 {
         self.origin
     }
 
+    /// Returns the names of the events to exclude from the query results.
     pub fn excluded_events(&self) -> Option<&Vec<&'static str>> {
         self.excluded_events.as_ref()
     }
