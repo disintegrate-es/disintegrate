@@ -1,6 +1,6 @@
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
-    EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventId,
+    EventInfo, EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
 };
 use disintegrate_serde::{serde::json::Json, Deserializer};
 use serde::Deserialize;
@@ -65,7 +65,7 @@ impl StateQuery for CartState {
     const NAME: &'static str = "cart-state";
     type Event = CartEvent;
 
-    fn query(&self) -> disintegrate::StreamQuery<Self::Event> {
+    fn query<ID: EventId>(&self) -> disintegrate::StreamQuery<ID, Self::Event> {
         query!(CartEvent; cart_id == self.cart_id)
     }
 }

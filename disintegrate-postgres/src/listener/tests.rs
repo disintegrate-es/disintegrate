@@ -80,7 +80,7 @@ impl Cart {
 }
 
 struct CartEventHandler {
-    query: StreamQuery<ShoppingCartEvent>,
+    query: StreamQuery<i64, ShoppingCartEvent>,
     pool: PgPool,
 }
 
@@ -104,19 +104,19 @@ impl CartEventHandler {
 }
 
 #[async_trait]
-impl EventListener<ShoppingCartEvent> for CartEventHandler {
+impl EventListener<i64, ShoppingCartEvent> for CartEventHandler {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "carts"
     }
 
-    fn query(&self) -> &StreamQuery<ShoppingCartEvent> {
+    fn query(&self) -> &StreamQuery<i64, ShoppingCartEvent> {
         &self.query
     }
 
     async fn handle(
         &self,
-        persisted_event: PersistedEvent<ShoppingCartEvent>,
+        persisted_event: PersistedEvent<i64, ShoppingCartEvent>,
     ) -> Result<(), Self::Error> {
         match persisted_event.into_inner() {
             ShoppingCartEvent::Added(payload) => {

@@ -47,14 +47,17 @@ fn it_renames_a_state_query() {
 #[test]
 fn it_builds_the_stream_query() {
     let user_orders = UserOrders { user_id: 1 };
-    assert_eq!(user_orders.query(), query!(DomainEvent; user_id == 1));
+    assert_eq!(
+        user_orders.query::<i64>(),
+        query!(DomainEvent; user_id == 1)
+    );
 
     let user_order = UserOrder {
         user_id: 2,
         order_id: "order1".to_string(),
     };
     assert_eq!(
-        user_order.query(),
+        user_order.query::<i64>(),
         query!(DomainEvent; user_id == 2, order_id == "order1")
     );
 }

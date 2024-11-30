@@ -8,7 +8,7 @@
 //! For more details and specific implementations, refer to the trait documentation and individual implementations
 //! of the `EventStore` trait.
 use crate::{
-    event::{Event, PersistedEvent},
+    event::{Event, EventId, PersistedEvent},
     stream_query::StreamQuery,
 };
 
@@ -19,8 +19,9 @@ use std::error::Error as StdError;
 ///
 /// This trait provides methods for streaming events and appending events to the event store.
 #[async_trait]
-pub trait EventStore<E>
+pub trait EventStore<ID, E>
 where
+    ID: EventId,
     E: Event + Send + Sync,
 {
     type Error: Send + Sync;
@@ -36,8 +37,8 @@ where
     /// A `Result` containing a boxed stream of `PersistedEvent` matching the query, or an error.
     fn stream<'a, QE>(
         &'a self,
-        query: &'a StreamQuery<QE>,
-    ) -> BoxStream<'a, Result<PersistedEvent<QE>, Self::Error>>
+        query: &'a StreamQuery<ID, QE>,
+    ) -> BoxStream<'a, Result<PersistedEvent<ID, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync;
@@ -62,9 +63,9 @@ where
     async fn append<QE>(
         &self,
         events: Vec<E>,
-        query: StreamQuery<QE>,
-        last_event_id: i64,
-    ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
+        query: StreamQuery<ID, QE>,
+        last_event_id: ID,
+    ) -> Result<Vec<PersistedEvent<ID, E>>, Self::Error>
     where
         E: Clone + 'async_trait,
         QE: Event + 'static + Clone + Send + Sync;

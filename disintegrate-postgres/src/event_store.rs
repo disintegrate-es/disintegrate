@@ -64,7 +64,7 @@ where
 /// allowing interaction with a PostgreSQL event store. It enables streaming events based on
 /// a query and appending new events to the event store.
 #[async_trait]
-impl<E, S> EventStore<E> for PgEventStore<E, S>
+impl<E, S> EventStore<i64, E> for PgEventStore<E, S>
 where
     E: Event + Send + Sync,
     S: Serde<E> + Send + Sync,
@@ -88,8 +88,8 @@ where
     /// or an error of type `Self::Error`.
     fn stream<'a, QE>(
         &'a self,
-        query: &'a StreamQuery<QE>,
-    ) -> BoxStream<'a, Result<PersistedEvent<QE>, Self::Error>>
+        query: &'a StreamQuery<i64, QE>,
+    ) -> BoxStream<'a, Result<PersistedEvent<i64, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
@@ -134,9 +134,9 @@ where
     async fn append<QE>(
         &self,
         events: Vec<E>,
-        query: StreamQuery<QE>,
+        query: StreamQuery<i64, QE>,
         version: i64,
-    ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
+    ) -> Result<Vec<PersistedEvent<i64, E>>, Self::Error>
     where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,

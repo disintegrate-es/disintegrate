@@ -2,6 +2,7 @@
 use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::event::EventId;
 use crate::stream_query::StreamQuery;
 use crate::{all_the_tuples, union, BoxDynError, StateSnapshotter};
 use crate::{event::Event, PersistedEvent};
@@ -28,13 +29,13 @@ pub trait StateMutate: StateQuery {
 /// # Type Parameters
 ///
 /// - `E`: The type of events that the multi-state object handles.
-pub trait MultiState<E: Event + Clone> {
+pub trait MultiState<ID: EventId, E: Event + Clone> {
     /// Mutates all sub-states based on the provided event.
     ///
     /// # Arguments
     ///
     /// * `event` - The event to be applied to mutate the sub-states.
-    fn mutate_all(&mut self, event: PersistedEvent<E>);
+    fn mutate_all(&mut self, event: PersistedEvent<ID, E>);
     /// The unified query that represents the union of queries for all sub-states.
     ///
     /// This query can be used to retrieve a stream of events relevant to the entire multi-state
@@ -43,7 +44,7 @@ pub trait MultiState<E: Event + Clone> {
     /// # Returns
     ///
     /// A `StreamQuery` representing the combined query for all sub-states.
-    fn query_all(&self) -> StreamQuery<E>;
+    fn query_all(&self) -> StreamQuery<ID, E>;
 
     /// Returns the version of the multi-state.
     ///
@@ -52,8 +53,8 @@ pub trait MultiState<E: Event + Clone> {
     ///
     /// # Returns
     ///
-    /// The method returns an `i64` representing the version of the multi-state.
-    fn version(&self) -> i64;
+    /// The method returns an `EventId` representing the version of the multi-state.
+    fn version(&self) -> ID;
 }
 
 macro_rules! impl_multi_state {
@@ -61,7 +62,7 @@ macro_rules! impl_multi_state {
         [$($ty:ident),*], $last:ident
     ) => {
         #[allow(unused_parens)]
-        impl<E, $($ty,)* $last> MultiState<E> for ($(StatePart<$ty>,)* StatePart<$last>)
+        impl<ID: EventId, E, $($ty,)* $last> MultiState<ID, E> for ($(StatePart<ID, $ty>,)* StatePart<ID, $last>)
         where
             E: Event + Clone,
             $($ty: StateQuery + StateMutate,)*
@@ -74,7 +75,7 @@ macro_rules! impl_multi_state {
             <<$last as StateQuery>::Event as TryFrom<E>>::Error:
                 StdError + 'static + Send + Sync,
         {
-            fn mutate_all(&mut self, event: PersistedEvent<E>) {
+            fn mutate_all(&mut self, event: PersistedEvent<ID, E>) {
                 paste! {
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
                     $(
@@ -88,13 +89,13 @@ macro_rules! impl_multi_state {
                 }
             }
 
-            fn query_all(&self) -> StreamQuery<E> {
+            fn query_all(&self) -> StreamQuery<ID, E> {
                 paste!{
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
                     union!($([<state_ $ty:lower>].query_part(),)* [<state_ $last:lower>].query_part())
                 }
             }
-            fn version(&self) -> i64 {
+            fn version(&self) -> ID {
                 paste!{
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
                     let version = [<state_ $last:lower>].version();
@@ -119,7 +120,7 @@ all_the_tuples!(impl_multi_state);
 /// - `T`: The type of snapshotter used for loading and storing snapshots.
 /// - `E`: The type of events that the multi-state object handles.
 #[async_trait]
-pub trait MultiStateSnapshot<T: StateSnapshotter> {
+pub trait MultiStateSnapshot<ID: EventId, T: StateSnapshotter<ID>> {
     // Loads the state of all sub-states using the provided snapshotter
     /// and returns the version of the multi-state object.
     ///
@@ -130,7 +131,7 @@ pub trait MultiStateSnapshot<T: StateSnapshotter> {
     /// # Returns
     ///
     /// Returns the version of the multi-state object after loading its state.
-    async fn load_all(&mut self, backend: &T) -> i64;
+    async fn load_all(&mut self, backend: &T) -> ID;
     /// Stores the snapshot of all sub-states using the provided snapshotter.
     ///
     /// # Arguments
@@ -149,13 +150,13 @@ macro_rules! impl_multi_state_snapshot {
     ) => {
         #[async_trait]
         #[allow(unused_parens)]
-        impl<B, $($ty,)* $last> MultiStateSnapshot<B> for ($(StatePart<$ty>,)* StatePart<$last>)
+        impl<ID: EventId, B, $($ty,)* $last> MultiStateSnapshot<ID, B> for ($(StatePart<ID, $ty>,)* StatePart<ID, $last>)
         where
-            B: StateSnapshotter + Send + Sync,
+            B: StateSnapshotter<ID> + Send + Sync,
             $($ty: StateQuery + Serialize + DeserializeOwned + 'static,)*
             $last: StateQuery + Serialize + DeserializeOwned + 'static,
         {
-            async fn load_all(&mut self, backend: &B) -> i64 {
+            async fn load_all(&mut self, backend: &B) -> ID {
                 paste! {
 
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>]) = self;
@@ -195,12 +196,13 @@ pub trait StateQuery: Clone + Send + Sync {
     type Event: Event + Clone + Send + Sync;
 
     /// Returns the stream query used to retrieve relevant events for building the state.
-    fn query(&self) -> StreamQuery<Self::Event>;
+    fn query<ID: EventId>(&self) -> StreamQuery<ID, Self::Event>;
 }
 
-impl<S, E: Event + Clone> From<&S> for StreamQuery<E>
+impl<ID, S, E: Event + Clone> From<&S> for StreamQuery<ID, E>
 where
     S: StateQuery<Event = E>,
+    ID: EventId,
 {
     fn from(state: &S) -> Self {
         state.query()
@@ -214,41 +216,41 @@ where
 ///
 /// - `S`: The type implementing the `StateMutate` trait, representing the sub-state.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct StatePart<S: StateQuery> {
+pub struct StatePart<ID: EventId, S: StateQuery> {
     /// The version of the sub-state.
-    version: i64,
+    version: ID,
     /// The count of events applied to the sub-state.
     applied_events: u64,
     /// The payload of the sub-state.
     inner: S,
 }
 
-impl<S: StateQuery> StatePart<S> {
-    pub fn new(version: i64, payload: S) -> Self {
+impl<ID: EventId, S: StateQuery> StatePart<ID, S> {
+    pub fn new(version: ID, payload: S) -> Self {
         Self {
             version,
             applied_events: 0,
             inner: payload,
         }
     }
-    pub fn version(&self) -> i64 {
+    pub fn version(&self) -> ID {
         self.version
     }
     pub fn applied_events(&self) -> u64 {
         self.applied_events
     }
-    pub fn query_part(&self) -> StreamQuery<<S as StateQuery>::Event> {
+    pub fn query_part(&self) -> StreamQuery<ID, <S as StateQuery>::Event> {
         self.inner.query().change_origin(self.version)
     }
 
-    pub fn matches_event<U>(&self, event: &PersistedEvent<U>) -> bool
+    pub fn matches_event<U>(&self, event: &PersistedEvent<ID, U>) -> bool
     where
         U: Event + Clone,
         <S as StateQuery>::Event: Into<U>,
     {
         self.query_part().cast().matches(event)
     }
-    pub fn mutate_part<E>(&mut self, event: PersistedEvent<E>)
+    pub fn mutate_part<E>(&mut self, event: PersistedEvent<ID, E>)
     where
         E: Event,
         S: StateMutate,
@@ -261,7 +263,7 @@ impl<S: StateQuery> StatePart<S> {
     }
 }
 
-impl<S: StateQuery> Deref for StatePart<S> {
+impl<ID: EventId, S: StateQuery> Deref for StatePart<ID, S> {
     type Target = S;
 
     fn deref(&self) -> &S {
@@ -281,7 +283,7 @@ impl<S: StateQuery> Deref for StatePart<S> {
 /// # Associated Types
 ///
 /// - `Target`: The resulting type after conversion, representing a `StatePart`.
-pub trait IntoStatePart<T>: Sized {
+pub trait IntoStatePart<ID: EventId, T>: Sized {
     type Target;
     /// Converts the object into a `StatePart`.
     ///
@@ -310,21 +312,23 @@ macro_rules! impl_from_state {
         [$($ty:ident),*], $last:ident
     ) => {
         #[allow(unused_parens)]
-        impl<$($ty,)* $last> IntoStatePart<($($ty,)* $last)> for ($($ty,)* $last) where
+        impl<ID, $($ty,)* $last> IntoStatePart<ID, ($($ty,)* $last)> for ($($ty,)* $last) where
+            ID: EventId,
             $($ty: StateQuery,)*
             $last: StateQuery,
         {
-            type Target = ($(StatePart<$ty>,)* StatePart<$last>);
+            type Target = ($(StatePart<ID, $ty>,)* StatePart<ID, $last>);
             paste::paste! {
-                fn into_state_part(self) -> ($(StatePart<$ty>,)*StatePart<$last>){
+                fn into_state_part(self) -> ($(StatePart<ID, $ty>,)*StatePart<ID, $last>){
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
-                    ($(StatePart{ inner: [<state_ $ty:lower>], version: 0, applied_events: 0},)* StatePart{inner: [<state_ $last:lower>], version: 0, applied_events: 0})
+                    ($(StatePart{ inner: [<state_ $ty:lower>], version: Default::default(), applied_events: 0},)* StatePart{inner: [<state_ $last:lower>], version: Default::default(), applied_events: 0})
                 }
             }
         }
 
         #[allow(unused_parens)]
-        impl<$($ty,)* $last> IntoState<($($ty,)* $last)> for ($(StatePart<$ty>,)* StatePart<$last>) where
+        impl<ID, $($ty,)* $last> IntoState<($($ty,)* $last)> for ($(StatePart<ID, $ty>,)* StatePart<ID, $last>) where
+            ID: EventId,
             $($ty: StateQuery,)*
             $last: StateQuery,
         {
@@ -364,7 +368,7 @@ mod test {
         let cart1 = Cart::new("c1");
         let cart2 = Cart::new("c2");
         let state = (cart1.clone(), cart2.clone()).into_state_part();
-        let query: StreamQuery<ShoppingCartEvent> = state.query_all();
+        let query: StreamQuery<_, ShoppingCartEvent> = state.query_all();
         assert_eq!(
             query,
             union!(
@@ -381,12 +385,12 @@ mod test {
         snapshotter
             .expect_store_snapshot()
             .once()
-            .withf(|s: &StatePart<Cart>| s.inner == cart("c1", []))
+            .withf(|s: &StatePart<i64, Cart>| s.inner == cart("c1", []))
             .return_once(|_| Ok(()));
         snapshotter
             .expect_store_snapshot()
             .once()
-            .withf(|s: &StatePart<Cart>| s.inner == cart("c2", []))
+            .withf(|s: &StatePart<i64, Cart>| s.inner == cart("c2", []))
             .return_once(|_| Ok(()));
         multi_state.store_all(&snapshotter).await.unwrap();
     }

@@ -202,6 +202,7 @@ pub const fn eq(lhs: &str, rhs: &str) -> bool {
 
 #[cfg(test)]
 pub mod tests {
+    use crate::event::EventId;
     use async_trait::async_trait;
     use futures::{
         stream::{self, BoxStream},
@@ -242,7 +243,7 @@ pub mod tests {
 
     pub fn event_stream<E: Event + Clone>(
         events: impl Into<Vec<E>>,
-    ) -> Vec<Result<PersistedEvent<E>, Error>> {
+    ) -> Vec<Result<PersistedEvent<i64, E>, Error>> {
         events
             .into()
             .into_iter()
@@ -315,15 +316,15 @@ pub mod tests {
     pub trait Database {
         fn stream<QE: Event + Clone + 'static + Send + Sync>(
             &self,
-            query: &StreamQuery<QE>,
-        ) -> Vec<Result<PersistedEvent<QE>, Error>>;
+            query: &StreamQuery<i64, QE>,
+        ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
 
         fn append<QE: Event + Clone + 'static + Send + Sync>(
             &self,
             events: Vec<ShoppingCartEvent>,
-            query: StreamQuery<QE>,
+            query: StreamQuery<i64, QE>,
             last_event_id: i64,
-        ) -> Vec<PersistedEvent<ShoppingCartEvent>>;
+        ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
     }
 
     mock! {
@@ -331,15 +332,15 @@ pub mod tests {
         impl Database for Database {
         fn stream<QE: Event + Clone + 'static + Send + Sync>(
             &self,
-            query: &StreamQuery<QE>,
-        ) -> Vec<Result<PersistedEvent<QE>, Error>>;
+            query: &StreamQuery<i64, QE>,
+        ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
 
         fn append<QE: Event + Clone + 'static + Send + Sync>(
             &self,
             events: Vec<ShoppingCartEvent>,
-            query: StreamQuery<QE>,
+            query: StreamQuery<i64, QE>,
             last_event_id: i64,
-        ) -> Vec<PersistedEvent<ShoppingCartEvent>>;
+        ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
         }
         impl Clone for Database {
             fn clone(&self) -> Self;
@@ -347,13 +348,13 @@ pub mod tests {
     }
 
     #[async_trait]
-    impl<D: Database + Sync> EventStore<ShoppingCartEvent> for MockEventStore<D> {
+    impl<D: Database + Sync> EventStore<i64, ShoppingCartEvent> for MockEventStore<D> {
         type Error = Error;
 
         fn stream<'a, QE>(
             &'a self,
-            query: &'a StreamQuery<QE>,
-        ) -> BoxStream<'a, Result<PersistedEvent<QE>, Self::Error>>
+            query: &'a StreamQuery<i64, QE>,
+        ) -> BoxStream<'a, Result<PersistedEvent<i64, QE>, Self::Error>>
         where
             QE: TryFrom<ShoppingCartEvent> + Event + 'static + Clone + Send + Sync,
             <QE as TryFrom<ShoppingCartEvent>>::Error: StdError + 'static + Send + Sync,
@@ -364,9 +365,9 @@ pub mod tests {
         async fn append<QE>(
             &self,
             events: Vec<ShoppingCartEvent>,
-            query: StreamQuery<QE>,
+            query: StreamQuery<i64, QE>,
             last_event_id: i64,
-        ) -> Result<Vec<PersistedEvent<ShoppingCartEvent>>, Self::Error>
+        ) -> Result<Vec<PersistedEvent<i64, ShoppingCartEvent>>, Self::Error>
         where
             QE: Event + 'static + Clone + Send + Sync,
         {
@@ -399,7 +400,7 @@ pub mod tests {
         const NAME: &'static str = "Cart";
         type Event = ShoppingCartEvent;
 
-        fn query(&self) -> StreamQuery<Self::Event> {
+        fn query<ID: EventId>(&self) -> StreamQuery<ID, Self::Event> {
             query!(ShoppingCartEvent; cart_id == self.cart_id.clone())
         }
     }
@@ -436,7 +437,7 @@ pub mod tests {
                 type Error = CartError;
 
             fn state_query(&self) -> <Self as Decision>::StateQuery;
-            fn validation_query(&self) -> Option<StreamQuery<ShoppingCartEvent>>;
+            fn validation_query<ID: EventId>(&self) -> Option<StreamQuery<ID, ShoppingCartEvent>>;
             fn process(&self, _state: &<Self as Decision>::StateQuery) -> Result<Vec<<Self as Decision>::Event>, <Self as Decision>::Error>;
         }
     }
@@ -444,11 +445,11 @@ pub mod tests {
     mock! {
             pub StateSnapshotter{}
             #[async_trait]
-            impl StateSnapshotter for StateSnapshotter {
-                async fn load_snapshot<S>(&self, default: StatePart<S>) -> StatePart<S>
+            impl StateSnapshotter<i64> for StateSnapshotter {
+                async fn load_snapshot<S>(&self, default: StatePart<i64, S>) -> StatePart<i64, S>
                 where
                     S: Send + Sync + DeserializeOwned + StateQuery + 'static;
-                async fn store_snapshot<S>(&self, state: &StatePart<S>) -> Result<(), BoxDynError>
+                async fn store_snapshot<S>(&self, state: &StatePart<i64, S>) -> Result<(), BoxDynError>
                 where
                     S: Send + Sync + Serialize + StateQuery + 'static;
             }

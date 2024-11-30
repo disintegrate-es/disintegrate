@@ -67,7 +67,7 @@ where
     /// The updated `PgEventListener` instance with the registered event handler.
     pub fn register_listener<QE>(
         mut self,
-        event_listener: impl EventListener<QE> + 'static,
+        event_listener: impl EventListener<i64, QE> + 'static,
         config: PgEventListenerConfig,
     ) -> Self
     where
@@ -215,7 +215,7 @@ where
     <QE as TryFrom<E>>::Error: Send + Sync,
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<i64, QE>,
 {
     event_store: PgEventStore<E, S>,
     event_handler: L,
@@ -230,7 +230,7 @@ where
     S: Serde<E> + Clone + Send + Sync,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<i64, QE>,
 {
     pub fn new(
         event_store: PgEventStore<E, S>,
@@ -331,7 +331,7 @@ where
     S: Serde<E> + Clone + Send + Sync,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<i64, QE>,
 {
     fn config(&self) -> &PgEventListenerConfig {
         &self.config

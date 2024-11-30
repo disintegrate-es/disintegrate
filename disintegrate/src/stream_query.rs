@@ -14,7 +14,7 @@
 use core::fmt::Debug;
 use std::marker::PhantomData;
 
-use crate::{domain_identifiers, DomainIdentifierSet, Event, PersistedEvent};
+use crate::{domain_identifiers, event::EventId, DomainIdentifierSet, Event, PersistedEvent};
 
 /// Represents a query for filtering event streams.
 ///
@@ -22,22 +22,24 @@ use crate::{domain_identifiers, DomainIdentifierSet, Event, PersistedEvent};
 /// It allows you to specify a filter to narrow down the events of interest and an origin
 /// to determine the starting point of the query within the event stream.
 #[derive(Debug, Clone)]
-pub struct StreamQuery<E: Event + Clone> {
+pub struct StreamQuery<ID: EventId, E: Event + Clone> {
     /// An optional filter applied to the event stream. It determines which events are included
     /// in the query results based on certain criteria.
-    filters: Vec<StreamFilter<E>>,
+    filters: Vec<StreamFilter<ID, E>>,
     /// A marker indicating the event type associated with the stream query.
     event_type: PhantomData<E>,
+    /// A marker indicating the event id type associated with the stream query.
+    event_id_type: PhantomData<ID>,
 }
 
-impl<E: Event + Clone> StreamQuery<E> {
+impl<ID: EventId, E: Event + Clone> StreamQuery<ID, E> {
     /// Returns the filter associated with the stream query, if any.
-    pub fn filters(&self) -> &[StreamFilter<E>] {
+    pub fn filters(&self) -> &[StreamFilter<ID, E>] {
         &self.filters
     }
 
     /// Casts the stream query to a different event type.
-    pub fn cast<U>(&self) -> StreamQuery<U>
+    pub fn cast<U>(&self) -> StreamQuery<ID, U>
     where
         E: Event + Into<U>,
         U: Event + Clone,
@@ -45,11 +47,12 @@ impl<E: Event + Clone> StreamQuery<E> {
         StreamQuery {
             filters: self.filters.iter().map(|f| f.cast()).collect(),
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     }
 
     /// Unions two stream queries into a single query.
-    pub fn union<U, O>(&self, other: &StreamQuery<O>) -> StreamQuery<U>
+    pub fn union<U, O>(&self, other: &StreamQuery<ID, O>) -> StreamQuery<ID, U>
     where
         E: Event + Into<U>,
         U: Event + Clone,
@@ -65,13 +68,14 @@ impl<E: Event + Clone> StreamQuery<E> {
         StreamQuery {
             filters,
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     }
 
     /// Changes the origin of the stream query.
     ///
     /// The origin determines the starting point of the query within the event stream.
-    pub fn change_origin(self, origin: i64) -> Self {
+    pub fn change_origin(self, origin: ID) -> Self {
         let filters = self
             .filters
             .iter()
@@ -84,6 +88,7 @@ impl<E: Event + Clone> StreamQuery<E> {
         StreamQuery {
             filters,
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     }
 
@@ -109,11 +114,12 @@ impl<E: Event + Clone> StreamQuery<E> {
         StreamQuery {
             filters,
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     }
 
     /// Checks if the stream query matches the given event.
-    pub fn matches(&self, event: &PersistedEvent<E>) -> bool {
+    pub fn matches(&self, event: &PersistedEvent<ID, E>) -> bool {
         self.filters.iter().any(|filter| {
             if let Some(excluded_events) = &filter.excluded_events {
                 if excluded_events.contains(&event.name()) {
@@ -142,27 +148,30 @@ impl<E: Event + Clone> StreamQuery<E> {
     }
 }
 
-impl<E: Event + Clone + PartialEq> PartialEq for StreamQuery<E> {
+impl<ID: EventId, E: Event + Clone + PartialEq> PartialEq for StreamQuery<ID, E> {
     fn eq(&self, other: &Self) -> bool {
         self.filters == other.filters
     }
 }
 
 /// Creates a new stream query with the given filter.
-pub fn query<E, O>(filter: Option<StreamFilter<O>>) -> StreamQuery<E>
+pub fn query<ID, E, O>(filter: Option<StreamFilter<ID, O>>) -> StreamQuery<ID, E>
 where
-    O: Event + Clone + Into<E>,
+    ID: EventId,
     E: Event + Clone,
+    O: Event + Clone + Into<E>,
 {
     if let Some(filter) = filter {
         StreamQuery {
             filters: vec![filter.cast()],
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     } else {
         StreamQuery {
             filters: vec![StreamFilter::new(domain_identifiers!())],
             event_type: PhantomData,
+            event_id_type: PhantomData,
         }
     }
 }
@@ -171,10 +180,10 @@ where
 #[macro_export]
 macro_rules! query {
     ($event_ty: ty) => {{
-        $crate::stream_query::query::<$event_ty, $event_ty>(None)
+        $crate::stream_query::query::<_, $event_ty, $event_ty>(None)
     }};
     ($event_ty:ty; $($filter:tt)+ ) => {{
-        $crate::stream_query::query::<$event_ty, _>(Some($crate::filter!($event_ty; $($filter)*)))
+        $crate::stream_query::query::<_, $event_ty, _>(Some($crate::filter!($event_ty; $($filter)*)))
     }};
     ($origin:expr => $event_ty:ty;  $($filter:tt)+ ) => {{
         $crate::query!($event_ty; $($filter)*).change_origin($origin)
@@ -229,7 +238,7 @@ macro_rules! filter {
 
                 )*
             }
-            $crate::stream_query::StreamFilter::<$event_ty>::new($crate::domain_identifiers!($($ident: $value.clone()),*))
+            $crate::stream_query::StreamFilter::<_, $event_ty>::new($crate::domain_identifiers!($($ident: $value.clone()),*))
         }
     };
 }
@@ -238,15 +247,15 @@ macro_rules! filter {
 #[macro_export]
 macro_rules! union {
     ($query:expr) =>{
-        Into::<$crate::stream_query::StreamQuery<_>>::into($query).cast()
+        Into::<$crate::stream_query::StreamQuery<_, _>>::into($query).cast()
     };
     ($query1:expr, $query2: expr) =>{
-        $crate::stream_query::StreamQuery::<_>::union(&Into::<$crate::stream_query::StreamQuery<_>>::into($query1),&Into::<$crate::stream_query::StreamQuery<_>>::into($query2))
+        $crate::stream_query::StreamQuery::<_, _>::union(&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query1),&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query2))
     };
     ($query:expr, $($queries: expr),*) =>{
         {
                 let mut result = $crate::union!($($queries),*);
-                result = $crate::stream_query::StreamQuery::<_>::union(&Into::<$crate::stream_query::StreamQuery<_>>::into($query), &result);
+                result = $crate::stream_query::StreamQuery::<_, _>::union(&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query), &result);
                 result
         }
     };
@@ -256,33 +265,33 @@ macro_rules! union {
 ///
 /// A `StreamFilter` is used to define filters and constraints for querying event streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StreamFilter<E: Event + Clone> {
+pub struct StreamFilter<ID: EventId, E: Event + Clone> {
     /// The names of the events to include in the query results.
     events: &'static [&'static str],
     /// The domain identifiers and values used to filter the events.
     identifiers: DomainIdentifierSet,
     /// The starting point of the query within the event stream.
-    origin: i64,
+    origin: ID,
     /// The names of the events to exclude from the query results.
     excluded_events: Option<Vec<&'static str>>,
     /// A marker indicating the event type associated with the stream filter.
     event_type: PhantomData<E>,
 }
 
-impl<E: Event + Clone> StreamFilter<E> {
+impl<ID: EventId, E: Event + Clone> StreamFilter<ID, E> {
     /// Creates a new stream filter with the specified domain identifiers.
     pub fn new(identifiers: DomainIdentifierSet) -> Self {
         Self {
             events: E::SCHEMA.events,
             identifiers,
-            origin: 0,
+            origin: Default::default(),
             excluded_events: None,
             event_type: PhantomData,
         }
     }
 
     /// Changes the origin of the stream filter.
-    pub fn change_origin(self, origin: i64) -> Self {
+    pub fn change_origin(self, origin: ID) -> Self {
         Self { origin, ..self }
     }
 
@@ -295,7 +304,7 @@ impl<E: Event + Clone> StreamFilter<E> {
     }
 
     /// Casts the stream filter to a different event type.
-    pub fn cast<O>(&self) -> StreamFilter<O>
+    pub fn cast<O>(&self) -> StreamFilter<ID, O>
     where
         E: Event + Into<O>,
         O: Event + Clone,
@@ -320,7 +329,7 @@ impl<E: Event + Clone> StreamFilter<E> {
     }
 
     /// Returns the starting point of the query within the event stream.
-    pub fn origin(&self) -> i64 {
+    pub fn origin(&self) -> ID {
         self.origin
     }
 
@@ -333,12 +342,13 @@ impl<E: Event + Clone> StreamFilter<E> {
 #[cfg(test)]
 mod tests {
     use crate::ident;
+    use crate::stream_query::StreamFilter;
     use crate::utils::tests::*;
     use crate::IdentifierValue;
 
     #[test]
     fn test_filter_with_no_origin_and_no_exclude_events() {
-        let filter = filter! {
+        let filter: StreamFilter<i64, _> = filter! {
             ShoppingCartEvent;
             cart_id == 42
         };

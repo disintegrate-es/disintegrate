@@ -105,13 +105,15 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
 
             type Event = #event_type;
 
-            fn query(&self) -> disintegrate::StreamQuery<Self::Event> {
+            fn query<ID: disintegrate::EventId>(&self) -> disintegrate::StreamQuery<ID, Self::Event> {
                 #state_query
             }
         }
 
-        impl<E> From<#state_query_ident> for disintegrate::StreamQuery<E>
-        where E: disintegrate::Event + Clone, <#state_query_ident as disintegrate::StateQuery>::Event: Into<E>
+        impl<ID, E> From<#state_query_ident> for disintegrate::StreamQuery<ID, E>
+        where
+            ID: disintegrate::EventId,
+            E: disintegrate::Event + Clone, <#state_query_ident as disintegrate::StateQuery>::Event: Into<E>
          {
             fn from(state: #state_query_ident) -> Self {
                 state.query().cast()
@@ -119,7 +121,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
         }
 
         impl #state_query_ident {
-            pub fn exclude_events(&self, events: &'static [&'static str]) -> disintegrate::StreamQuery<<Self as disintegrate::StateQuery>::Event> {
+            pub fn exclude_events<ID: disintegrate::EventId>(&self, events: &'static [&'static str]) -> disintegrate::StreamQuery<ID, <Self as disintegrate::StateQuery>::Event> {
                 self.query().exclude_events(events)
             }
         }
