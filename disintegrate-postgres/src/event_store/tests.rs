@@ -1,5 +1,5 @@
 use super::insert_builder::InsertBuilder;
-use crate::{Error, PgEventStore};
+use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
     domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
     EventSchema, EventStore, IdentifierType,
@@ -136,8 +136,8 @@ async fn it_appends_events(pool: PgPool) {
     );
 }
 
-fn assert_event_row(row: &PgRow, event_id: i64, event_type: &str, payload: ShoppingCartEvent) {
-    let stored_event_id: i64 = row.get(0);
+fn assert_event_row(row: &PgRow, event_id: PgEventId, event_type: &str, payload: ShoppingCartEvent) {
+    let stored_event_id: PgEventId = row.get(0);
     assert_eq!(stored_event_id, event_id);
     let stored_event_type: String = row.get(1);
     assert_eq!(stored_event_type, event_type);

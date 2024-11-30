@@ -15,7 +15,7 @@ use std::error::Error as StdError;
 
 use std::marker::PhantomData;
 
-use crate::Error;
+use crate::{Error, PgEventId};
 use async_stream::stream;
 use async_trait::async_trait;
 use disintegrate::stream_query::StreamQuery;
@@ -64,7 +64,7 @@ where
 /// allowing interaction with a PostgreSQL event store. It enables streaming events based on
 /// a query and appending new events to the event store.
 #[async_trait]
-impl<E, S> EventStore<i64, E> for PgEventStore<E, S>
+impl<E, S> EventStore<PgEventId, E> for PgEventStore<E, S>
 where
     E: Event + Send + Sync,
     S: Serde<E> + Send + Sync,
@@ -88,8 +88,8 @@ where
     /// or an error of type `Self::Error`.
     fn stream<'a, QE>(
         &'a self,
-        query: &'a StreamQuery<i64, QE>,
-    ) -> BoxStream<'a, Result<PersistedEvent<i64, QE>, Self::Error>>
+        query: &'a StreamQuery<PgEventId, QE>,
+    ) -> BoxStream<'a, Result<PersistedEvent<PgEventId, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
@@ -134,15 +134,15 @@ where
     async fn append<QE>(
         &self,
         events: Vec<E>,
-        query: StreamQuery<i64, QE>,
-        version: i64,
-    ) -> Result<Vec<PersistedEvent<i64, E>>, Self::Error>
+        query: StreamQuery<PgEventId, QE>,
+        version: PgEventId,
+    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
     where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
         let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids: Vec<i64> = Vec::with_capacity(events.len());
+        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         for event in events {
             let mut sequence_insert =
                 InsertBuilder::new(&event, "event_sequence").returning("event_id");

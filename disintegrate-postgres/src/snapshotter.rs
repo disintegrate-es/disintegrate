@@ -12,7 +12,7 @@ use sqlx::PgPool;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::Error;
+use crate::{Error, PgEventId};
 
 #[cfg(test)]
 mod tests;
@@ -45,8 +45,8 @@ impl PgSnapshotter {
 }
 
 #[async_trait]
-impl StateSnapshotter<i64> for PgSnapshotter {
-    async fn load_snapshot<S>(&self, default: StatePart<i64, S>) -> StatePart<i64, S>
+impl StateSnapshotter<PgEventId> for PgSnapshotter {
+    async fn load_snapshot<S>(&self, default: StatePart<PgEventId, S>) -> StatePart<PgEventId, S>
     where
         S: Send + Sync + DeserializeOwned + StateQuery + 'static,
     {
@@ -68,7 +68,7 @@ impl StateSnapshotter<i64> for PgSnapshotter {
         default
     }
 
-    async fn store_snapshot<S>(&self, state: &StatePart<i64, S>) -> Result<(), BoxDynError>
+    async fn store_snapshot<S>(&self, state: &StatePart<PgEventId, S>) -> Result<(), BoxDynError>
     where
         S: Send + Sync + Serialize + StateQuery + 'static,
     {
@@ -102,7 +102,7 @@ fn snapshot_id(state_name: &str, query: &str) -> Uuid {
     )
 }
 
-fn query_key<E: Event + Clone>(query: &StreamQuery<i64, E>) -> String {
+fn query_key<E: Event + Clone>(query: &StreamQuery<PgEventId, E>) -> String {
     let mut result = String::new();
     for f in query.filters() {
         let excluded_events = if let Some(exclued_events) = f.excluded_events() {

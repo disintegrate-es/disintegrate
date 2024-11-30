@@ -15,12 +15,14 @@ use disintegrate::{
 use disintegrate_serde::Serde;
 pub use error::Error;
 
+pub type PgEventId = i64;
+
 /// An alias for [`DecisionMaker`], specialized for Postgres.
 pub type PgDecisionMaker<E, S, SN> =
-    DecisionMaker<EventSourcedDecisionStateStore<i64, E, PgEventStore<E, S>, SN>>;
+    DecisionMaker<EventSourcedDecisionStateStore<PgEventId, E, PgEventStore<E, S>, SN>>;
 
 /// An alias for [`WithSnapshot`], specialized for Postgres.
-pub type WithPgSnapshot = WithSnapshot<i64, PgSnapshotter>;
+pub type WithPgSnapshot = WithSnapshot<PgEventId, PgSnapshotter>;
 
 /// Creates a decision maker specialized for Postgres with snapshotting.
 /// The `every` parameter determines the frequency of snapshot creation, indicating the number of events

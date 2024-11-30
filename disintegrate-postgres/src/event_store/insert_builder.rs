@@ -3,6 +3,8 @@ use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::Postgres;
 
+use crate::PgEventId;
+
 /// SQL Insert Builder
 ///
 /// A builder for constructing insert SQL queries.
@@ -12,7 +14,7 @@ where
 {
     builder: sqlx::QueryBuilder<'a, Postgres>,
     event: &'a E,
-    id: Option<i64>,
+    id: Option<PgEventId>,
     payload: Option<&'a [u8]>,
     returning: Option<&'a str>,
 }
@@ -42,7 +44,7 @@ where
     /// # Arguments
     ///
     /// * `id` - The ID of the event.
-    pub fn with_id(mut self, id: i64) -> Self {
+    pub fn with_id(mut self, id: PgEventId) -> Self {
         self.id = Some(id);
         self
     }

@@ -83,7 +83,7 @@ struct SnapshotRow {
     id: Uuid,
     name: String,
     query: String,
-    version: i64,
+    version: PgEventId,
     payload: String,
 }
 

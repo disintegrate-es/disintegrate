@@ -4,6 +4,8 @@ use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::Postgres;
 
+use crate::PgEventId;
+
 /// SQL Query Builder
 ///
 /// A builder for constructing SQL query based on the stream query.
@@ -11,7 +13,7 @@ pub struct QueryBuilder<'a, QE>
 where
     QE: Event + Clone,
 {
-    query: StreamQuery<i64, QE>,
+    query: StreamQuery<PgEventId, QE>,
     builder: sqlx::QueryBuilder<'a, Postgres>,
     end: Option<&'a str>,
 }
@@ -26,7 +28,7 @@ where
     ///
     /// * `query` - The stream query specifying the filtering and ordering options.
     /// * `init` - The initial SQL fragment.
-    pub fn new(query: StreamQuery<i64, QE>, init: &str) -> Self {
+    pub fn new(query: StreamQuery<PgEventId, QE>, init: &str) -> Self {
         Self {
             query,
             builder: sqlx::QueryBuilder::new(init),
@@ -54,7 +56,7 @@ where
         self.builder.build()
     }
 
-    fn build_criteria(&mut self, query: StreamQuery<i64, QE>) {
+    fn build_criteria(&mut self, query: StreamQuery<PgEventId, QE>) {
         let mut filters = query.filters().iter().peekable();
         while let Some(filter) = filters.next() {
             let events: Vec<&str> = if let Some(excluted_event) = filter.excluded_events() {
@@ -209,7 +211,7 @@ mod tests {
 
     #[test]
     fn it_builds_query_with_union() {
-        let query: StreamQuery<i64, TestEvent> =
+        let query: StreamQuery<PgEventId, TestEvent> =
             query!(TestEvent; bar_id == "value1").union(&query!(TestEvent; foo_id == "value2"));
         let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
 
