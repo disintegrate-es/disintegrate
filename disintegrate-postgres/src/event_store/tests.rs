@@ -136,7 +136,12 @@ async fn it_appends_events(pool: PgPool) {
     );
 }
 
-fn assert_event_row(row: &PgRow, event_id: PgEventId, event_type: &str, payload: ShoppingCartEvent) {
+fn assert_event_row(
+    row: &PgRow,
+    event_id: PgEventId,
+    event_type: &str,
+    payload: ShoppingCartEvent,
+) {
     let stored_event_id: PgEventId = row.get(0);
     assert_eq!(stored_event_id, event_id);
     let stored_event_type: String = row.get(1);
