@@ -98,33 +98,30 @@ impl<SS> DecisionMaker<SS> {
     /// A `Result` indicating the success of the decision-making process. If successful,
     /// it contains a vector of `PersistedEvent` representing the changes made. In case of
     /// an error, it contains details about the encountered issue.
-    pub async fn make<D, S, DS, E>(
+    pub async fn make<D, S, E>(
         &self,
         decision: D,
     ) -> Result<Vec<PersistedEvent<E>>, Error<D::Error>>
     where
         E: Event + Clone + Sync + Send + 'static,
-        SS: DecisionStateStore<DS, E>,
+        SS: DecisionStateStore<S, E>,
         D: Decision<StateQuery = S, Event = E>,
-        S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<S, Target = DS>,
-        DS: Send + Sync + Serialize + DeserializeOwned + IntoState<S> + MultiState<E>,
+        S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<S>,
+        <S as IntoStatePart<S>>::Target: Send + Sync + Serialize + DeserializeOwned + IntoState<S> + MultiState<E>,
         <D as Decision>::Error: 'static,
     {
-        let state = self
+        let loaded_state= self
             .state_store
-            .load(decision.state_query().into_state_part())
+            .load(decision.state_query())
             .await
             .map_err(Error::StateStore)?;
-        let version = state.version();
-        let inner_state = state.into_state();
-        let changes = decision.process(&inner_state).map_err(Error::Domain)?;
+        let changes = decision.process(&loaded_state.state).map_err(Error::Domain)?;
         let events = self
             .state_store
             .persist(
-                inner_state.into_state_part(),
+                loaded_state,
                 changes.into_iter().collect(),
                 decision.validation_query(),
-                version,
             )
             .await
             .map_err(Error::StateStore)?;
@@ -181,4 +178,5 @@ mod test {
 
         decision_maker.make(mock_add_item).await.unwrap();
     }
+
 }
