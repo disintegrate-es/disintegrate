@@ -3,8 +3,7 @@
 //! This module provides an implementation of the `Snapshotter` trait using PostgreSQL as the underlying storage.
 //! It allows storing and retrieving snapshots from a PostgreSQL database.
 use async_trait::async_trait;
-use disintegrate::stream_query::StreamFilter;
-use disintegrate::{BoxDynError, IntoState, StateSnapshotter};
+use disintegrate::{BoxDynError, Event, IntoState, StateSnapshotter, StreamQuery};
 use disintegrate::{StatePart, StateQuery};
 use md5::{Digest, Md5};
 use serde::de::DeserializeOwned;
@@ -13,7 +12,7 @@ use sqlx::PgPool;
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::Error;
+use crate::{Error, PgEventId};
 
 #[cfg(test)]
 mod tests;
@@ -46,12 +45,12 @@ impl PgSnapshotter {
 }
 
 #[async_trait]
-impl StateSnapshotter for PgSnapshotter {
-    async fn load_snapshot<S>(&self, default: StatePart<S>) -> StatePart<S>
+impl StateSnapshotter<PgEventId> for PgSnapshotter {
+    async fn load_snapshot<S>(&self, default: StatePart<PgEventId, S>) -> StatePart<PgEventId, S>
     where
         S: Send + Sync + DeserializeOwned + StateQuery + 'static,
     {
-        let query = query_key(default.query().filter());
+        let query = query_key(&default.query());
         let stored_snapshot =
             sqlx::query("SELECT name, query, payload, version FROM snapshot where id = $1")
                 .bind(snapshot_id(S::NAME, &query))
@@ -69,14 +68,14 @@ impl StateSnapshotter for PgSnapshotter {
         default
     }
 
-    async fn store_snapshot<S>(&self, state: &StatePart<S>) -> Result<(), BoxDynError>
+    async fn store_snapshot<S>(&self, state: &StatePart<PgEventId, S>) -> Result<(), BoxDynError>
     where
         S: Send + Sync + Serialize + StateQuery + 'static,
     {
         if state.applied_events() <= self.every {
             return Ok(());
         }
-        let query = query_key(state.query().filter());
+        let query = query_key(&state.query());
         let id = snapshot_id(S::NAME, &query);
         let version = state.version();
         let payload = serde_json::to_string(&state.clone().into_state())?;
@@ -103,19 +102,27 @@ fn snapshot_id(state_name: &str, query: &str) -> Uuid {
     )
 }
 
-fn query_key(filter: &StreamFilter) -> String {
-    match filter {
-        StreamFilter::Events { names } => {
-            format!("({})", names.join(","))
-        }
-        StreamFilter::ExcludeEvents { names } => {
-            format!("not({})", names.join(","))
-        }
-        StreamFilter::Eq { ident, value } => format!("{ident}={value}"),
-        StreamFilter::And { l, r } => format!("{}&{}", query_key(l), query_key(r)),
-        StreamFilter::Or { l, r } => format!("{}|{}", query_key(l), query_key(r)),
-        StreamFilter::Origin { id } => format!(">={id}"),
+fn query_key<E: Event + Clone>(query: &StreamQuery<PgEventId, E>) -> String {
+    let mut result = String::new();
+    for f in query.filters() {
+        let excluded_events = if let Some(exclued_events) = f.excluded_events() {
+            format!("-{}", exclued_events.join(","))
+        } else {
+            "".to_string()
+        };
+        result += &format!(
+            "({}|{}{}|{})",
+            f.origin(),
+            f.events().join(","),
+            excluded_events,
+            f.identifiers()
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
     }
+    result
 }
 
 pub async fn setup(pool: &PgPool) -> Result<(), Error> {

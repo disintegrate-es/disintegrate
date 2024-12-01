@@ -1,6 +1,6 @@
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event,
-    EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventId,
+    EventInfo, EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
 };
 use disintegrate_serde::{serde::json::Json, Deserializer};
 use serde::Deserialize;
@@ -16,7 +16,11 @@ enum CartEvent {
 
 impl Event for CartEvent {
     const SCHEMA: EventSchema = EventSchema {
-        types: &["CartEventItemAdded"],
+        events: &["CartEventItemAdded"],
+        events_info: &[&EventInfo {
+            name: "CartProductAdded",
+            domain_identifiers: &[&ident!(#cart_id), &ident!(#product_id)],
+        }],
         domain_identifiers: &[
             &DomainIdentifierInfo {
                 ident: ident!(#cart_id),
@@ -61,8 +65,8 @@ impl StateQuery for CartState {
     const NAME: &'static str = "cart-state";
     type Event = CartEvent;
 
-    fn query(&self) -> disintegrate::StreamQuery<Self::Event> {
-        query!(CartEvent, cart_id == self.cart_id)
+    fn query<ID: EventId>(&self) -> disintegrate::StreamQuery<ID, Self::Event> {
+        query!(CartEvent; cart_id == self.cart_id)
     }
 }
 
@@ -79,7 +83,7 @@ struct SnapshotRow {
     id: Uuid,
     name: String,
     query: String,
-    version: i64,
+    version: PgEventId,
     payload: String,
 }
 
@@ -103,7 +107,7 @@ async fn it_stores_snapshots(pool: PgPool) {
         .await
         .unwrap();
 
-    let query_key = query_key(state.query().filter());
+    let query_key = query_key(&state.query());
     let snapshot_id = snapshot_id(CartState::NAME, &query_key);
     assert_eq!(stored_snapshot.id, snapshot_id);
     assert_eq!(stored_snapshot.name, CartState::NAME);
@@ -122,7 +126,7 @@ async fn it_loads_snapshots(pool: PgPool) {
     let snapshotter = PgSnapshotter::new(pool.clone(), 2).await.unwrap();
     let default_state = CartState::new("c1", []);
     let expected_state = CartState::new("c1", ["p1", "p2"]);
-    let query_key = query_key(default_state.query().filter());
+    let query_key = query_key(&default_state.query());
     let snapshot_id = snapshot_id(CartState::NAME, &query_key);
     sqlx::query("INSERT INTO snapshot (id, name, query, payload, version) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET name = $2, query = $3, payload = $4, version = $5 WHERE snapshot.version < $5")
         .bind(snapshot_id)

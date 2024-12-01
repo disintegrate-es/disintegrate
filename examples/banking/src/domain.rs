@@ -246,7 +246,7 @@ impl Decision for WithdrawAmount {
         (AccountState::new(self.id), AccountBalance::new(self.id))
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+    fn validation_query<ID: disintegrate::EventId>(&self) -> Option<StreamQuery<ID, Self::Event>> {
         let (account_state, account_balance) = self.state_query();
         Some(union!(
             &account_state,
@@ -308,7 +308,7 @@ impl Decision for SendMoney {
         )
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+    fn validation_query<ID: disintegrate::EventId>(&self) -> Option<StreamQuery<ID, Self::Event>> {
         let (account_state, account_balance, beneficiary_state) = self.state_query();
         Some(union!(
             &account_state,

@@ -41,7 +41,7 @@ use std::{collections::BTreeMap, ops::Deref};
 /// Represents a key-value pair of domain identifiers.
 ///
 /// The `DomainIdentifier` struct is used to associate a specific `Identifier` key with a corresponding `String` value.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DomainIdentifier {
     pub key: Identifier,
     pub value: IdentifierValue,
@@ -50,7 +50,7 @@ pub struct DomainIdentifier {
 /// A set of domain identifiers, represented as a map of `Identifier` keys and `String` values.
 ///
 /// The `DomainIdentifierSet` struct is used to store a collection of domain identifiers.
-#[derive(Debug, Default, PartialEq, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct DomainIdentifierSet(BTreeMap<Identifier, IdentifierValue>);
 
 impl DomainIdentifierSet {

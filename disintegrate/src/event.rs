@@ -8,16 +8,62 @@
 use crate::{domain_identifier::DomainIdentifierSet, Identifier, IdentifierType};
 use std::ops::Deref;
 
+/// Represents the ID of an event.
+pub trait EventId:
+    Default + Copy + Clone + PartialEq + Eq + Ord + PartialOrd + Send + Sync + 'static
+{
+}
+
+impl<Id> EventId for Id where
+    Id: Default + Copy + Clone + PartialEq + Eq + Ord + PartialOrd + Send + Sync + 'static
+{
+}
+
+/// Represents the schema of an event.
+///
+/// The event info contains the name of the event and the domain identifiers associated with it.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct EventInfo {
+    /// The name of the event.
+    pub name: &'static str,
+    /// The domain identifiers associated with the event.
+    pub domain_identifiers: &'static [&'static Identifier],
+}
+
+impl EventInfo {
+    /// Returns true if the event has the given domain identifier.
+    pub fn has_domain_identifier(&self, ident: &Identifier) -> bool {
+        self.domain_identifiers.iter().any(|id| *id == ident)
+    }
+}
+
+/// Represents the domain identifier and its type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct DomainIdentifierInfo {
+    /// The domain identifier.
     pub ident: Identifier,
+    /// The type of the domain identifier.
     pub type_info: IdentifierType,
 }
 
+/// Represents the schema of all supported events.
+///
+/// The schema contains the names of all supported events,
+/// the domain identifiers associated with them, and the domain identifiers' types.
 #[derive(Debug, Clone)]
 pub struct EventSchema {
-    pub types: &'static [&'static str],
+    pub events: &'static [&'static str],
+    pub events_info: &'static [&'static EventInfo],
     pub domain_identifiers: &'static [&'static DomainIdentifierInfo],
+}
+
+impl EventSchema {
+    pub fn event_info(&self, name: &str) -> Option<&EventInfo> {
+        self.events_info
+            .iter()
+            .find(|info| info.name == name)
+            .copied()
+    }
 }
 
 /// Represents an event in the event store.
@@ -38,14 +84,14 @@ pub trait Event {
 ///
 /// It contains an ID assigned by the event store and the event itself.
 #[derive(Debug, Clone)]
-pub struct PersistedEvent<E: Event> {
-    pub(crate) id: i64,
+pub struct PersistedEvent<ID: EventId, E: Event> {
+    pub(crate) id: ID,
     pub(crate) event: E,
 }
 
-impl<E: Event> PersistedEvent<E> {
+impl<ID: EventId, E: Event> PersistedEvent<ID, E> {
     /// Creates a new `PersistedEvent` instance with the given ID and event.
-    pub fn new(id: i64, event: E) -> Self {
+    pub fn new(id: ID, event: E) -> Self {
         Self { id, event }
     }
 
@@ -55,12 +101,12 @@ impl<E: Event> PersistedEvent<E> {
     }
 
     /// Retrieves the ID assigned by the event store for this persisted event.
-    pub fn id(&self) -> i64 {
+    pub fn id(&self) -> ID {
         self.id
     }
 }
 
-impl<E: Event> Deref for PersistedEvent<E> {
+impl<ID: EventId, E: Event> Deref for PersistedEvent<ID, E> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {

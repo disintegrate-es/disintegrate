@@ -2,13 +2,13 @@
 use async_trait::async_trait;
 
 use crate::{
-    event::{Event, PersistedEvent},
+    event::{Event, EventId, PersistedEvent},
     stream_query::StreamQuery,
 };
 
 /// Represents an event listener, which handles persisted events.
 #[async_trait]
-pub trait EventListener<E: Event + Clone>: Send + Sync {
+pub trait EventListener<ID: EventId, E: Event + Clone>: Send + Sync {
     /// The type of error that may occur during the handle of an event.
     type Error;
 
@@ -20,11 +20,11 @@ pub trait EventListener<E: Event + Clone>: Send + Sync {
     /// Returns the stream query used by the event listener.
     ///
     /// The query specifies the criteria for the events that the event listener can handle.
-    fn query(&self) -> &StreamQuery<E>;
+    fn query(&self) -> &StreamQuery<ID, E>;
 
     /// Handles an event.
     ///
     /// This method handle the event coming from the event stream.
     /// The method returns a result indicating success or an error that may occur during the event handler.
-    async fn handle(&self, event: PersistedEvent<E>) -> Result<(), Self::Error>;
+    async fn handle(&self, event: PersistedEvent<ID, E>) -> Result<(), Self::Error>;
 }

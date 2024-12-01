@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::Error;
+use crate::{Error, PgEventId};
 use async_trait::async_trait;
 use disintegrate::{Event, EventListener, EventStore};
 use disintegrate_serde::Serde;
@@ -67,7 +67,7 @@ where
     /// The updated `PgEventListener` instance with the registered event handler.
     pub fn register_listener<QE>(
         mut self,
-        event_listener: impl EventListener<QE> + 'static,
+        event_listener: impl EventListener<PgEventId, QE> + 'static,
         config: PgEventListenerConfig,
     ) -> Self
     where
@@ -135,7 +135,7 @@ where
 
 #[derive(Debug)]
 pub struct PgEventListenerError {
-    last_processed_event_id: i64,
+    last_processed_event_id: PgEventId,
 }
 
 /// PostgreSQL listener Configuration
@@ -215,7 +215,7 @@ where
     <QE as TryFrom<E>>::Error: Send + Sync,
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<PgEventId, QE>,
 {
     event_store: PgEventStore<E, S>,
     event_handler: L,
@@ -230,7 +230,7 @@ where
     S: Serde<E> + Clone + Send + Sync,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<PgEventId, QE>,
 {
     pub fn new(
         event_store: PgEventStore<E, S>,
@@ -249,7 +249,7 @@ where
     async fn lock_event_listener(
         &self,
         tx: &mut Transaction<'_, Postgres>,
-    ) -> Result<Option<i64>, sqlx::Error> {
+    ) -> Result<Option<PgEventId>, sqlx::Error> {
         Ok(sqlx::query(
             r#"
                 SELECT last_processed_event_id 
@@ -266,7 +266,7 @@ where
 
     async fn release_event_listener(
         &self,
-        result: Result<i64, PgEventListenerError>,
+        result: Result<PgEventId, PgEventListenerError>,
         mut tx: Transaction<'_, Postgres>,
     ) -> Result<(), sqlx::Error> {
         let last_processed_event_id = match result {
@@ -287,8 +287,8 @@ where
 
     pub async fn handle_events_from(
         &self,
-        mut last_processed_event_id: i64,
-    ) -> Result<i64, PgEventListenerError> {
+        mut last_processed_event_id: PgEventId,
+    ) -> Result<PgEventId, PgEventListenerError> {
         let query = self
             .event_handler
             .query()
@@ -331,7 +331,7 @@ where
     S: Serde<E> + Clone + Send + Sync,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<QE>,
+    L: EventListener<PgEventId, QE>,
 {
     fn config(&self) -> &PgEventListenerConfig {
         &self.config

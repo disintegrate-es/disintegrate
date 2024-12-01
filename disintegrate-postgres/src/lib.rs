@@ -9,16 +9,20 @@ pub use crate::event_store::PgEventStore;
 #[cfg(feature = "listener")]
 pub use crate::listener::{PgEventListener, PgEventListenerConfig};
 pub use crate::snapshotter::PgSnapshotter;
-use disintegrate::{DecisionMaker, EventSourcedDecisionStateStore, NoSnapshot, WithSnapshot};
+use disintegrate::{
+    DecisionMaker, Event, EventSourcedDecisionStateStore, NoSnapshot, WithSnapshot,
+};
 use disintegrate_serde::Serde;
 pub use error::Error;
 
+pub type PgEventId = i64;
+
 /// An alias for [`DecisionMaker`], specialized for Postgres.
 pub type PgDecisionMaker<E, S, SN> =
-    DecisionMaker<EventSourcedDecisionStateStore<PgEventStore<E, S>, SN>>;
+    DecisionMaker<EventSourcedDecisionStateStore<PgEventId, E, PgEventStore<E, S>, SN>>;
 
 /// An alias for [`WithSnapshot`], specialized for Postgres.
-pub type WithPgSnapshot = WithSnapshot<PgSnapshotter>;
+pub type WithPgSnapshot = WithSnapshot<PgEventId, PgSnapshotter>;
 
 /// Creates a decision maker specialized for Postgres with snapshotting.
 /// The `every` parameter determines the frequency of snapshot creation, indicating the number of events
@@ -32,7 +36,10 @@ pub type WithPgSnapshot = WithSnapshot<PgSnapshotter>;
 /// # Returns
 ///
 /// A `PgDecisionMaker` with snapshotting configured using the provided snapshot frequency.
-pub async fn decision_maker_with_snapshot<E: Clone, S: Serde<E> + Clone + Sync + Send>(
+pub async fn decision_maker_with_snapshot<
+    E: Event + Send + Sync + Clone,
+    S: Serde<E> + Clone + Sync + Send,
+>(
     event_store: PgEventStore<E, S>,
     every: u64,
 ) -> Result<PgDecisionMaker<E, S, WithPgSnapshot>, Error> {
@@ -53,7 +60,7 @@ pub async fn decision_maker_with_snapshot<E: Clone, S: Serde<E> + Clone + Sync +
 /// # Returns
 ///
 /// A `PgDecisionMaker` without snapshotting.
-pub fn decision_maker<E: Clone, S: Serde<E> + Clone + Sync + Send>(
+pub fn decision_maker<E: Event + Send + Sync + Clone, S: Serde<E> + Clone + Sync + Send>(
     event_store: PgEventStore<E, S>,
 ) -> PgDecisionMaker<E, S, NoSnapshot> {
     DecisionMaker::new(EventSourcedDecisionStateStore::new(event_store, NoSnapshot))

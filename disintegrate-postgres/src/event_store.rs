@@ -15,7 +15,7 @@ use std::error::Error as StdError;
 
 use std::marker::PhantomData;
 
-use crate::Error;
+use crate::{Error, PgEventId};
 use async_stream::stream;
 use async_trait::async_trait;
 use disintegrate::stream_query::StreamQuery;
@@ -64,7 +64,7 @@ where
 /// allowing interaction with a PostgreSQL event store. It enables streaming events based on
 /// a query and appending new events to the event store.
 #[async_trait]
-impl<E, S> EventStore<E> for PgEventStore<E, S>
+impl<E, S> EventStore<PgEventId, E> for PgEventStore<E, S>
 where
     E: Event + Send + Sync,
     S: Serde<E> + Send + Sync,
@@ -88,8 +88,8 @@ where
     /// or an error of type `Self::Error`.
     fn stream<'a, QE>(
         &'a self,
-        query: &'a StreamQuery<QE>,
-    ) -> BoxStream<Result<PersistedEvent<QE>, Self::Error>>
+        query: &'a StreamQuery<PgEventId, QE>,
+    ) -> BoxStream<'a, Result<PersistedEvent<PgEventId, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
@@ -134,15 +134,15 @@ where
     async fn append<QE>(
         &self,
         events: Vec<E>,
-        query: StreamQuery<QE>,
-        version: i64,
-    ) -> Result<Vec<PersistedEvent<E>>, Self::Error>
+        query: StreamQuery<PgEventId, QE>,
+        version: PgEventId,
+    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
     where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
         let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids: Vec<i64> = Vec::with_capacity(events.len());
+        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         for event in events {
             let mut sequence_insert =
                 InsertBuilder::new(&event, "event_sequence").returning("event_id");
@@ -160,12 +160,12 @@ where
         let mut tx = self.pool.begin().await?;
         let mut consume_sql = QueryBuilder::new(
             query.change_origin(version),
-            format!(r#"UPDATE event_sequence SET consumed = consumed + 1, committed = (event_id = ANY('{{{persisted_event_ids}}}'))
-                       WHERE event_id IN ({persisted_event_ids}) 
+            format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{persisted_event_ids}}}'))
+                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({persisted_event_ids}) 
                        OR ((consumed = 0 OR committed = true) 
-                       AND (event_id <= {last_event_id} AND "#).as_str(),
+                       AND (event_id <= {last_event_id} AND ("#).as_str(),
         )
-        .end_with("))");
+        .end_with("))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id");
 
         consume_sql
             .build()
@@ -245,7 +245,7 @@ async fn add_domain_identifier_column(
     .await?;
 
     sqlx::query(&format!(
-        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table}({column_name})"
+        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table} USING HASH ({column_name}) WHERE {column_name} IS NOT NULL"
     ))
     .execute(pool)
     .await?;

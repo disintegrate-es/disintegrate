@@ -31,7 +31,7 @@ pub struct Course {
 }
 
 pub struct ReadModelProjection {
-    query: StreamQuery<DomainEvent>,
+    query: StreamQuery<i64, DomainEvent>,
     pool: PgPool,
 }
 
@@ -50,24 +50,24 @@ impl ReadModelProjection {
         .execute(&pool)
         .await?;
         Ok(Self {
-            query: query(None),
+            query: query!(DomainEvent),
             pool,
         })
     }
 }
 
 #[async_trait]
-impl EventListener<DomainEvent> for ReadModelProjection {
+impl EventListener<i64, DomainEvent> for ReadModelProjection {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "courses"
     }
 
-    fn query(&self) -> &StreamQuery<DomainEvent> {
+    fn query(&self) -> &StreamQuery<i64, DomainEvent> {
         &self.query
     }
 
-    async fn handle(&self, event: PersistedEvent<DomainEvent>) -> Result<(), Self::Error> {
+    async fn handle(&self, event: PersistedEvent<i64, DomainEvent>) -> Result<(), Self::Error> {
         let event_id = event.id();
         match event.into_inner() {
             DomainEvent::CourseCreated {
