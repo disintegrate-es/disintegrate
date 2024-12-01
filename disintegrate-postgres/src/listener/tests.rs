@@ -2,8 +2,8 @@ use super::*;
 
 use async_trait::async_trait;
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, EventSchema,
-    EventStore, IdentifierType, PersistedEvent, StreamQuery,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+    EventSchema, EventStore, IdentifierType, PersistedEvent, StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 
@@ -19,7 +19,17 @@ enum ShoppingCartEvent {
 
 impl Event for ShoppingCartEvent {
     const SCHEMA: EventSchema = EventSchema {
-        types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        events: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        events_info: &[
+            &EventInfo {
+                name: "ShoppingCartAdded",
+                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+            },
+            &EventInfo {
+                name: "ShoppingCartRemoved",
+                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+            },
+        ],
         domain_identifiers: &[
             &DomainIdentifierInfo {
                 ident: ident!(#cart_id),
@@ -70,7 +80,7 @@ impl Cart {
 }
 
 struct CartEventHandler {
-    query: StreamQuery<ShoppingCartEvent>,
+    query: StreamQuery<PgEventId, ShoppingCartEvent>,
     pool: PgPool,
 }
 
@@ -94,19 +104,19 @@ impl CartEventHandler {
 }
 
 #[async_trait]
-impl EventListener<ShoppingCartEvent> for CartEventHandler {
+impl EventListener<PgEventId, ShoppingCartEvent> for CartEventHandler {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "carts"
     }
 
-    fn query(&self) -> &StreamQuery<ShoppingCartEvent> {
+    fn query(&self) -> &StreamQuery<PgEventId, ShoppingCartEvent> {
         &self.query
     }
 
     async fn handle(
         &self,
-        persisted_event: PersistedEvent<ShoppingCartEvent>,
+        persisted_event: PersistedEvent<PgEventId, ShoppingCartEvent>,
     ) -> Result<(), Self::Error> {
         match persisted_event.into_inner() {
             ShoppingCartEvent::Added(payload) => {
@@ -141,10 +151,7 @@ async fn it_handles_events(pool: PgPool) {
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let _result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {
@@ -178,10 +185,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let append_result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {
