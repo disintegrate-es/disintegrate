@@ -19,7 +19,7 @@ impl<Id> EventId for Id where
 {
 }
 
-/// Represents the schema of all supported events.
+/// Represents the schema of an event.
 ///
 /// The event info contains the name of the event and the domain identifiers associated with it.
 #[derive(Debug, PartialEq, Eq, Clone)]
