@@ -146,6 +146,17 @@ impl<ID: EventId, E: Event + Clone> StreamQuery<ID, E> {
             true
         })
     }
+
+    pub fn matches_event(&self, event: &str) -> bool {
+        self.filters.iter().any(|filter| {
+            if let Some(excluded_events) = &filter.excluded_events {
+                if excluded_events.contains(&event) {
+                    return false;
+                }
+            }
+            true
+        })
+    }
 }
 
 impl<ID: EventId, E: Event + Clone + PartialEq> PartialEq for StreamQuery<ID, E> {
