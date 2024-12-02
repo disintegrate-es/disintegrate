@@ -30,6 +30,7 @@ pub struct Course {
     pub closed: bool,
 }
 
+#[derive(Clone)]
 pub struct ReadModelProjection {
     query: StreamQuery<i64, DomainEvent>,
     pool: PgPool,

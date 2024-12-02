@@ -1,4 +1,4 @@
-CREATE OR REPLACE TRIGGER trigger_notify_event_listener
-  AFTER INSERT ON event
-  FOR EACH STATEMENT
-  EXECUTE PROCEDURE notify_event_listener();
+CREATE OR REPLACE TRIGGER event_insert_trigger
+  AFTER INSERT ON event 
+  FOR EACH ROW
+  EXECUTE function notify_event_listener();

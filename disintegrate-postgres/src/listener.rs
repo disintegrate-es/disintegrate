@@ -9,15 +9,16 @@ mod tests;
 
 use crate::{Error, PgEventId};
 use async_trait::async_trait;
-use disintegrate::{Event, EventListener, EventStore};
+use disintegrate::{Event, EventListener, EventStore, StreamQuery};
 use disintegrate_serde::Serde;
 use futures::future::join_all;
 use futures::{try_join, Future, StreamExt};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::error::Error as StdError;
 use std::marker::PhantomData;
-use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::event_store::PgEventStore;
@@ -28,7 +29,7 @@ where
     E: Event + Clone,
     S: Serde<E> + Send + Sync,
 {
-    executors: Vec<Arc<dyn EventListenerExecutor + Sync + Send>>,
+    executors: Vec<Box<dyn EventListenerExecutor<E>>>,
     event_store: PgEventStore<E, S>,
     shutdown_token: CancellationToken,
 }
@@ -67,16 +68,17 @@ where
     /// The updated `PgEventListener` instance with the registered event handler.
     pub fn register_listener<QE>(
         mut self,
-        event_listener: impl EventListener<PgEventId, QE> + 'static,
+        event_listener: impl EventListener<PgEventId, QE> + Clone + 'static,
         config: PgEventListenerConfig,
     ) -> Self
     where
-        QE: TryFrom<E> + Event + Send + Sync + Clone + 'static,
+        QE: TryFrom<E> + Into<E> + Event + Send + Sync + Clone + 'static,
         <QE as TryFrom<E>>::Error: StdError + Send + Sync,
     {
-        self.executors.push(Arc::new(PgEventListerExecutor::new(
+        self.executors.push(Box::new(PgEventListerExecutor::new(
             self.event_store.clone(),
             event_listener,
+            self.shutdown_token.clone(),
             config,
         )));
         self
@@ -90,9 +92,16 @@ where
     pub async fn start(self) -> Result<(), Error> {
         setup(&self.event_store.pool).await?;
         let mut handles = vec![];
-        let listener_enabled = self.executors.iter().any(|e| e.config().listener_enabled());
-        let (events_listener_tx, events_listener_rx) = tokio::sync::watch::channel(true);
-        if listener_enabled {
+        let mut wakers = vec![];
+        for executor in self.executors {
+            executor.init().await?;
+            let (waker, task) = executor.run();
+            if let Some(waker) = waker {
+                wakers.push(waker);
+            }
+            handles.push(task);
+        }
+        if !wakers.is_empty() {
             let pool = self.event_store.pool.clone();
             let shutdown = self.shutdown_token.clone();
             let watch_new_events = tokio::spawn(async move {
@@ -103,7 +112,13 @@ where
                         tokio::select! {
                             msg = listener.try_recv() => {
                                 match msg {
-                                    Ok(_) => { events_listener_tx.send_replace(true); },
+                                    Ok(Some(notification)) => {
+                                        let event = notification.payload();
+                                        for waker in &wakers {
+                                            waker.wake(event);
+                                        }
+                                    },
+                                    Ok(None) => {},
                                     Err(err @ sqlx::Error::PoolClosed) => return Err(Error::Database(err)),
                                     Err(_) => break,
                                 }
@@ -114,25 +129,6 @@ where
                 }
             });
             handles.push(watch_new_events);
-        }
-        for executor in self.executors {
-            executor.init().await?;
-            let executor = executor.clone();
-            let shutdown = self.shutdown_token.clone();
-            let mut events_listener_rx = events_listener_rx.clone();
-            let listener_enabled = executor.config().listener_enabled();
-            let handle = tokio::spawn(async move {
-                let mut poll = tokio::time::interval(executor.config().poll());
-                poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    tokio::select! {
-                        Some(Ok(())) = async { if listener_enabled {  let res = events_listener_rx.changed().await; Some(res) } else { None } } => executor.execute().await?,
-                        _ = poll.tick() => executor.execute().await?,
-                        _ = shutdown.cancelled() => return Ok::<(), Error>(()),
-                    };
-                }
-            });
-            handles.push(handle);
         }
         join_all(handles).await;
         Ok(())
@@ -173,12 +169,11 @@ pub struct PgEventListenerError {
 /// * `poll`: The `poll` property represents the interval at which the
 ///   listener should poll for new events from the event store. This determines how frequently the
 ///   event handler will handles new events.
-/// * `batch_size`: The `batch_size` property determines the number of events to be processed in a single batch.
+/// * `notifier_enabled`: The `notifier_enabled` indicates if the listener is configured to handle events in "real time".
 #[derive(Clone)]
 pub struct PgEventListenerConfig {
     poll: Duration,
-    batch_size: usize,
-    listener_enabled: bool,
+    notifier_enabled: bool,
 }
 
 impl PgEventListenerConfig {
@@ -194,32 +189,17 @@ impl PgEventListenerConfig {
     pub fn poller(poll: Duration) -> Self {
         Self {
             poll,
-            batch_size: 100,
-            listener_enabled: false,
+            notifier_enabled: false,
         }
     }
 
-    /// Sets the batch size for processing events in the listener.
-    ///
-    /// # Parameters
-    ///
-    /// * `batch_size`: The number of events to process in each batch.
+    /// Sets the db notifier.
     ///
     /// # Returns
     ///
-    /// The updated `PgEventListenerConfig` instance with the batch size set.
-    pub fn with_batch_size(mut self, batch_size: usize) -> Self {
-        self.batch_size = batch_size;
-        self
-    }
-
-    /// Sets the db listener.
-    ///
-    /// # Returns
-    ///
-    /// The updated `PgEventListenerConfig` instance with the db listener set.
-    pub fn with_listener(mut self) -> Self {
-        self.listener_enabled = true;
+    /// The updated `PgEventListenerConfig` instance with the db notifier set.
+    pub fn with_notifier(mut self) -> Self {
+        self.notifier_enabled = true;
         self
     }
 
@@ -232,32 +212,23 @@ impl PgEventListenerConfig {
         self.poll
     }
 
-    /// Returns the batch size for processing events.
-    ///
-    /// # Returns
-    ///
-    /// The batch size.
-    pub fn batch_size(&self) -> usize {
-        self.batch_size
-    }
-
     /// Returns if the db listener is enabled or disabled.
     ///
     /// # Returns
     ///
     /// True if the db listener is enabled, false otherwise.
     pub fn listener_enabled(&self) -> bool {
-        self.listener_enabled
+        self.notifier_enabled
     }
 }
 
 #[async_trait]
-trait EventListenerExecutor {
-    fn config(&self) -> &PgEventListenerConfig;
+trait EventListenerExecutor<E: Event + Clone> {
     async fn init(&self) -> Result<(), Error>;
-    async fn execute(&self) -> Result<(), Error>;
+    fn run(&self) -> (Option<ExecutorWaker<E>>, JoinHandle<Result<(), Error>>);
 }
 
+#[derive(Clone)]
 struct PgEventListerExecutor<L, QE, E, S>
 where
     QE: TryFrom<E> + Event + Send + Sync + Clone,
@@ -269,27 +240,32 @@ where
     event_store: PgEventStore<E, S>,
     event_handler: L,
     config: PgEventListenerConfig,
+    wake_channel: (watch::Sender<bool>, watch::Receiver<bool>),
+    shutdown_token: CancellationToken,
     _event_store_events: PhantomData<E>,
     _event_listener_events: PhantomData<QE>,
 }
 
 impl<L, QE, E, S> PgEventListerExecutor<L, QE, E, S>
 where
-    E: Event + Clone + Sync + Send,
-    S: Serde<E> + Clone + Send + Sync,
+    E: Event + Clone + Sync + Send + 'static,
+    S: Serde<E> + Clone + Send + Sync + 'static,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<PgEventId, QE>,
+    L: EventListener<PgEventId, QE> + 'static,
 {
     pub fn new(
         event_store: PgEventStore<E, S>,
         event_handler: L,
+        shutdown_token: CancellationToken,
         config: PgEventListenerConfig,
     ) -> Self {
         Self {
             event_store,
             event_handler,
             config,
+            wake_channel: watch::channel(true),
+            shutdown_token,
             _event_store_events: PhantomData,
             _event_listener_events: PhantomData,
         }
@@ -343,7 +319,7 @@ where
             .query()
             .clone()
             .change_origin(last_processed_event_id);
-        let mut events_stream = self.event_store.stream(&query).take(self.config.batch_size);
+        let mut events_stream = self.event_store.stream(&query);
 
         while let Some(event) = events_stream.next().await {
             let event = event.map_err(|_err| PgEventListenerError {
@@ -371,21 +347,42 @@ where
         let result = self.handle_events_from(last_processed_id).await;
         self.release_event_listener(result, tx).await
     }
+
+    async fn execute(&self) -> Result<(), Error> {
+        let result = self.try_execute().await;
+        match result {
+            Err(sqlx::Error::Io(_)) | Err(sqlx::Error::PoolTimedOut) => Ok(()),
+            Err(err) => Err(Error::Database(err)),
+            _ => Ok(()),
+        }
+    }
+
+    pub fn spawn_task(self) -> JoinHandle<Result<(), Error>> {
+        let shutdown = self.shutdown_token.clone();
+        let mut poll = tokio::time::interval(self.config.poll());
+        poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut wake_tx = self.wake_channel.1.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    Ok(()) =  wake_tx.changed() => self.execute().await?,
+                    _ = poll.tick() => self.execute().await?,
+                    _ = shutdown.cancelled() => return Ok::<(), Error>(()),
+                };
+            }
+        })
+    }
 }
 
 #[async_trait]
-impl<L, QE, E, S> EventListenerExecutor for PgEventListerExecutor<L, QE, E, S>
+impl<L, QE, E, S> EventListenerExecutor<E> for PgEventListerExecutor<L, QE, E, S>
 where
-    E: Event + Clone + Sync + Send,
-    S: Serde<E> + Clone + Send + Sync,
-    QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
+    E: Event + Clone + Sync + Send + 'static,
+    S: Serde<E> + Clone + Send + Sync + 'static,
+    QE: TryFrom<E> + Into<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<PgEventId, QE>,
+    L: EventListener<PgEventId, QE> + Clone + 'static,
 {
-    fn config(&self) -> &PgEventListenerConfig {
-        &self.config
-    }
-
     async fn init(&self) -> Result<(), Error> {
         let mut tx = self.event_store.pool.begin().await?;
         sqlx::query("INSERT INTO event_listener (id, last_processed_event_id) VALUES ($1, 0) ON CONFLICT (id) DO NOTHING")
@@ -396,12 +393,28 @@ where
         Ok(())
     }
 
-    async fn execute(&self) -> Result<(), Error> {
-        let result = self.try_execute().await;
-        match result {
-            Err(sqlx::Error::Io(_)) | Err(sqlx::Error::PoolTimedOut) => Ok(()),
-            Err(err) => Err(Error::Database(err)),
-            _ => Ok(()),
+    fn run(&self) -> (Option<ExecutorWaker<E>>, JoinHandle<Result<(), Error>>) {
+        let waker = if self.config.notifier_enabled {
+            Some(ExecutorWaker {
+                wake_tx: self.wake_channel.0.clone(),
+                query: self.event_handler.query().cast().clone(),
+            })
+        } else {
+            None
+        };
+        (waker, self.clone().spawn_task())
+    }
+}
+
+struct ExecutorWaker<E: Event + Clone> {
+    wake_tx: watch::Sender<bool>,
+    query: StreamQuery<PgEventId, E>,
+}
+
+impl<E: Event + Clone> ExecutorWaker<E> {
+    fn wake(&self, event: &str) {
+        if self.query.matches_event(event) {
+            self.wake_tx.send_replace(true);
         }
     }
 }
