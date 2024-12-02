@@ -17,7 +17,7 @@ In Disintegrate, Event Listeners are independent components that can be deployed
 PgEventListener::builder(event_store)
     .register_listener(
         read_model::ReadModelProjection::new(pool.clone()).await?,
-        PgEventListenerConfig::poller(Duration::from_millis(50)),
+        PgEventListenerConfig::poller(Duration::from_millis(5000)).with_notifier(),
     )
     .start_with_shutdown(shutdown())
     .await
@@ -29,8 +29,9 @@ This listener will start to handle all the events defined by the `ReadModelProje
 * the `handle` method that provides the implementation of the event listener
 
 ```rust
+#[derive(Clone)]
 pub struct ReadModelProjection {
-    query: StreamQuery<DomainEvent>,
+    query: StreamQuery<PgEventId, DomainEvent>,
     pool: PgPool,
 }
 
@@ -62,7 +63,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
         "courses"
     }
 
-    fn query(&self) -> &StreamQuery<DomainEvent> {
+    fn query(&self) -> &StreamQuery<PgEventId, DomainEvent> {
         &self.query
     }
 
