@@ -198,6 +198,7 @@ impl PgEventListenerConfig {
     /// # Returns
     ///
     /// The updated `PgEventListenerConfig` instance with the db notifier set.
+    /// When the db notifier is enabled, the event listener will handle events in "real time".
     pub fn with_notifier(mut self) -> Self {
         self.notifier_enabled = true;
         self
