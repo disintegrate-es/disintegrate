@@ -16,6 +16,7 @@ use futures::{try_join, Future, StreamExt};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::error::Error as StdError;
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -68,7 +69,7 @@ where
     /// The updated `PgEventListener` instance with the registered event handler.
     pub fn register_listener<QE>(
         mut self,
-        event_listener: impl EventListener<PgEventId, QE> + Clone + 'static,
+        event_listener: impl EventListener<PgEventId, QE> + 'static,
         config: PgEventListenerConfig,
     ) -> Self
     where
@@ -113,9 +114,8 @@ where
                             msg = listener.try_recv() => {
                                 match msg {
                                     Ok(Some(notification)) => {
-                                        let event = notification.payload();
                                         for waker in &wakers {
-                                            waker.wake(event);
+                                            waker.wake(notification.payload());
                                         }
                                     },
                                     Ok(None) => {},
@@ -211,7 +211,6 @@ trait EventListenerExecutor<E: Event + Clone> {
     fn run(&self) -> (Option<ExecutorWaker<E>>, JoinHandle<Result<(), Error>>);
 }
 
-#[derive(Clone)]
 struct PgEventListerExecutor<L, QE, E, S>
 where
     QE: TryFrom<E> + Event + Send + Sync + Clone,
@@ -221,7 +220,7 @@ where
     L: EventListener<PgEventId, QE>,
 {
     event_store: PgEventStore<E, S>,
-    event_handler: L,
+    event_handler: Arc<L>,
     config: PgEventListenerConfig,
     wake_channel: (watch::Sender<bool>, watch::Receiver<bool>),
     shutdown_token: CancellationToken,
@@ -245,7 +244,7 @@ where
     ) -> Self {
         Self {
             event_store,
-            event_handler,
+            event_handler: Arc::new(event_handler),
             config,
             wake_channel: watch::channel(true),
             shutdown_token,
@@ -364,7 +363,7 @@ where
     S: Serde<E> + Clone + Send + Sync + 'static,
     QE: TryFrom<E> + Into<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
-    L: EventListener<PgEventId, QE> + Clone + 'static,
+    L: EventListener<PgEventId, QE> + 'static,
 {
     async fn init(&self) -> Result<(), Error> {
         let mut tx = self.event_store.pool.begin().await?;
@@ -386,6 +385,27 @@ where
             None
         };
         (waker, self.clone().spawn_task())
+    }
+}
+
+impl<L, QE, E, S> Clone for PgEventListerExecutor<L, QE, E, S>
+where
+    QE: TryFrom<E> + Event + Send + Sync + Clone,
+    <QE as TryFrom<E>>::Error: Send + Sync,
+    E: Event + Clone + Sync + Send,
+    S: Serde<E> + Clone + Send + Sync,
+    L: EventListener<PgEventId, QE>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            event_store: self.event_store.clone(),
+            event_handler: Arc::clone(&self.event_handler),
+            config: self.config.clone(),
+            wake_channel: self.wake_channel.clone(),
+            shutdown_token: self.shutdown_token.clone(),
+            _event_store_events: PhantomData,
+            _event_listener_events: PhantomData,
+        }
     }
 }
 

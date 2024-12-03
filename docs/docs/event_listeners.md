@@ -29,7 +29,6 @@ This listener will start to handle all the events defined by the `ReadModelProje
 * the `handle` method that provides the implementation of the event listener
 
 ```rust
-#[derive(Clone)]
 pub struct ReadModelProjection {
     query: StreamQuery<PgEventId, DomainEvent>,
     pool: PgPool,

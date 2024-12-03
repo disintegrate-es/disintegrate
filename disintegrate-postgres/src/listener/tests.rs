@@ -79,7 +79,6 @@ impl Cart {
     }
 }
 
-#[derive(Clone)]
 struct CartEventHandler {
     query: StreamQuery<PgEventId, ShoppingCartEvent>,
     pool: PgPool,
