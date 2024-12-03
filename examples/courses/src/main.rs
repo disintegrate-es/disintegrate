@@ -69,7 +69,7 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
     PgEventListener::builder(event_store)
         .register_listener(
             read_model::ReadModelProjection::new(pool).await?,
-            PgEventListenerConfig::poller(Duration::from_secs(500)).with_notifier(),
+            PgEventListenerConfig::poller(Duration::from_secs(5)).with_notifier(),
         )
         .start_with_shutdown(shutdown())
         .await
