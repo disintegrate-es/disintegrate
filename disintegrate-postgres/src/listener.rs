@@ -203,24 +203,6 @@ impl PgEventListenerConfig {
         self.notifier_enabled = true;
         self
     }
-
-    /// Returns the poll interval for the event listener.
-    ///
-    /// # Returns
-    ///
-    /// The poll interval.
-    pub fn poll(&self) -> Duration {
-        self.poll
-    }
-
-    /// Returns if the db listener is enabled or disabled.
-    ///
-    /// # Returns
-    ///
-    /// True if the db listener is enabled, false otherwise.
-    pub fn listener_enabled(&self) -> bool {
-        self.notifier_enabled
-    }
 }
 
 #[async_trait]
@@ -360,7 +342,7 @@ where
 
     pub fn spawn_task(self) -> JoinHandle<Result<(), Error>> {
         let shutdown = self.shutdown_token.clone();
-        let mut poll = tokio::time::interval(self.config.poll());
+        let mut poll = tokio::time::interval(self.config.poll);
         poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut wake_tx = self.wake_channel.1.clone();
         tokio::spawn(async move {
