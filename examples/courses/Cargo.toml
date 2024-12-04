@@ -17,7 +17,7 @@ sqlx = { version = "0.8.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.61"
 tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "signal"] }
 tonic = { version = "0.11.0", features = ["gzip", "transport"] }
-tonic-health = "0.11.0"
+tonic-health = "0.12.3"
 tonic-reflection = "0.11.0"
 tower = "0.4.13"
 tower-http = { version = "0.5.2", features = ["trace"] }
