@@ -31,7 +31,7 @@ pub struct Course {
 }
 
 pub struct ReadModelProjection {
-    query: StreamQuery<DomainEvent>,
+    query: StreamQuery<i64, DomainEvent>,
     pool: PgPool,
 }
 
@@ -50,24 +50,24 @@ impl ReadModelProjection {
         .execute(&pool)
         .await?;
         Ok(Self {
-            query: query(None),
+            query: query!(DomainEvent),
             pool,
         })
     }
 }
 
 #[async_trait]
-impl EventListener<DomainEvent> for ReadModelProjection {
+impl EventListener<i64, DomainEvent> for ReadModelProjection {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "courses"
     }
 
-    fn query(&self) -> &StreamQuery<DomainEvent> {
+    fn query(&self) -> &StreamQuery<i64, DomainEvent> {
         &self.query
     }
 
-    async fn handle(&self, event: PersistedEvent<DomainEvent>) -> Result<(), Self::Error> {
+    async fn handle(&self, event: PersistedEvent<i64, DomainEvent>) -> Result<(), Self::Error> {
         let event_id = event.id();
         match event.into_inner() {
             DomainEvent::CourseCreated {
@@ -88,7 +88,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
             }
             DomainEvent::CourseClosed { course_id } => {
                 sqlx::query(
-                    "UPDATE course SET closed = true WHERE course_id = $1 and event_id < $2",
+                    "UPDATE course SET closed = true, event_id = $2 WHERE course_id = $1 and event_id < $2",
                 )
                 .bind(course_id)
                 .bind(event_id)
@@ -98,7 +98,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
             }
             DomainEvent::StudentSubscribed { course_id, .. } => {
                 sqlx::query(
-                    "UPDATE course SET available_seats = available_seats - 1 WHERE course_id = $1 and event_id < $2",
+                    "UPDATE course SET available_seats = available_seats - 1, event_id = $2 WHERE course_id = $1 and event_id < $2",
                 )
                 .bind(course_id)
                 .bind(event_id)
@@ -108,7 +108,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
             }
             DomainEvent::StudentUnsubscribed { course_id, .. } => {
                 sqlx::query(
-                    "UPDATE course SET available_seats = available_seats + 1 WHERE course_id = $1 and event_id < $2",
+                    "UPDATE course SET available_seats = available_seats + 1, event_id = $2 WHERE course_id = $1 and event_id < $2",
                 )
                 .bind(course_id)
                 .bind(event_id)
@@ -117,7 +117,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
                 .unwrap();
             }
             DomainEvent::CourseRenamed { course_id, name } => {
-                sqlx::query("UPDATE course SET name = $2 WHERE course_id = $1 and event_id < $2")
+                sqlx::query("UPDATE course SET name = $2, event_id = $2 WHERE course_id = $1 and event_id < $2")
                     .bind(course_id)
                     .bind(name)
                     .bind(event_id)

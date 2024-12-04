@@ -2,8 +2,8 @@ use super::*;
 
 use async_trait::async_trait;
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, EventSchema,
-    EventStore, IdentifierType, PersistedEvent, StreamQuery,
+    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+    EventSchema, EventStore, IdentifierType, PersistedEvent, StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 
@@ -19,7 +19,17 @@ enum ShoppingCartEvent {
 
 impl Event for ShoppingCartEvent {
     const SCHEMA: EventSchema = EventSchema {
-        types: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        events: &["ShoppingCartAdded", "ShoppingCartRemoved"],
+        events_info: &[
+            &EventInfo {
+                name: "ShoppingCartAdded",
+                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+            },
+            &EventInfo {
+                name: "ShoppingCartRemoved",
+                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+            },
+        ],
         domain_identifiers: &[
             &DomainIdentifierInfo {
                 ident: ident!(#cart_id),
@@ -70,7 +80,7 @@ impl Cart {
 }
 
 struct CartEventHandler {
-    query: StreamQuery<ShoppingCartEvent>,
+    query: StreamQuery<PgEventId, ShoppingCartEvent>,
     pool: PgPool,
 }
 
@@ -94,19 +104,19 @@ impl CartEventHandler {
 }
 
 #[async_trait]
-impl EventListener<ShoppingCartEvent> for CartEventHandler {
+impl EventListener<PgEventId, ShoppingCartEvent> for CartEventHandler {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "carts"
     }
 
-    fn query(&self) -> &StreamQuery<ShoppingCartEvent> {
+    fn query(&self) -> &StreamQuery<PgEventId, ShoppingCartEvent> {
         &self.query
     }
 
     async fn handle(
         &self,
-        persisted_event: PersistedEvent<ShoppingCartEvent>,
+        persisted_event: PersistedEvent<PgEventId, ShoppingCartEvent>,
     ) -> Result<(), Self::Error> {
         match persisted_event.into_inner() {
             ShoppingCartEvent::Added(payload) => {
@@ -136,15 +146,13 @@ async fn it_handles_events(pool: PgPool) {
     let event_handler_executor = PgEventListerExecutor::new(
         event_store.clone(),
         CartEventHandler::new(pool.clone()).await.unwrap(),
+        CancellationToken::new(),
         PgEventListenerConfig::poller(Duration::from_secs(1)),
     );
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let _result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {
@@ -178,10 +186,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
     let cart_id = "cart_1".to_string();
     let product_id = "product_1".to_string();
-    let query = query!(
-        ShoppingCartEvent,
-        (cart_id == cart_id) or (product_id == product_id)
-    );
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
     let append_result = event_store
         .append(
             vec![ShoppingCartEvent::Added(CartEventPayload {
@@ -198,6 +203,50 @@ async fn it_runs_event_listeners(pool: PgPool) {
         .register_listener(
             CartEventHandler::new(pool.clone()).await.unwrap(),
             PgEventListenerConfig::poller(Duration::from_millis(10)),
+        )
+        .start_with_shutdown(async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        })
+        .await
+        .unwrap();
+
+    assert!(append_result.is_ok());
+    let carts = Cart::carts(&pool).await.unwrap();
+    assert_eq!(carts.len(), 1);
+    let first_row = carts.first().unwrap();
+    assert_eq!("cart_1", &first_row.cart_id);
+    assert_eq!("product_1", &first_row.product_id);
+    assert_eq!(1, first_row.quantity);
+}
+
+#[sqlx::test]
+async fn it_runs_event_listener_with_db_listener(pool: PgPool) {
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+
+    let cart_id = "cart_1".to_string();
+    let product_id = "product_1".to_string();
+    let query = query!(ShoppingCartEvent; cart_id == cart_id, product_id == product_id);
+    let append_result = event_store
+        .append(
+            vec![ShoppingCartEvent::Added(CartEventPayload {
+                cart_id,
+                product_id,
+                quantity: 1,
+            })],
+            query,
+            0,
+        )
+        .await;
+
+    PgEventListener::builder(event_store.clone())
+        .register_listener(
+            CartEventHandler::new(pool.clone()).await.unwrap(),
+            PgEventListenerConfig::poller(Duration::from_millis(5000)).with_notifier(),
         )
         .start_with_shutdown(async {
             tokio::time::sleep(Duration::from_millis(200)).await;

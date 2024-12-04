@@ -3,6 +3,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::event::EventId;
 use crate::stream_query::StreamQuery;
 use crate::BoxDynError;
 use crate::{event::Event, PersistedEvent};
@@ -38,7 +39,7 @@ pub trait Decision: Send + Sync {
     /// but only withdraw events should invalidate the decision.
     /// In other words, once we have confirmed that the account has a sufficient amount,
     /// only a withdraw event can reduce the balance below the requested amount and invalidate the decision.
-    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+    fn validation_query<ID: EventId>(&self) -> Option<StreamQuery<ID, Self::Event>> {
         None
     }
 
@@ -82,7 +83,7 @@ impl<SS> DecisionMaker<SS> {
     /// # Parameters
     ///
     /// - `state_store`: The state store backend used by the `DecisionMaker` to load the current state
-    ///  and persist the decision.
+    ///   and persist the decision.
     pub fn new(state_store: SS) -> Self {
         Self { state_store }
     }
@@ -98,33 +99,34 @@ impl<SS> DecisionMaker<SS> {
     /// A `Result` indicating the success of the decision-making process. If successful,
     /// it contains a vector of `PersistedEvent` representing the changes made. In case of
     /// an error, it contains details about the encountered issue.
-    pub async fn make<D, S, DS, E>(
+    pub async fn make<D, S, ID, E>(
         &self,
         decision: D,
-    ) -> Result<Vec<PersistedEvent<E>>, Error<D::Error>>
+    ) -> Result<Vec<PersistedEvent<ID, E>>, Error<D::Error>>
     where
+        ID: EventId,
         E: Event + Clone + Sync + Send + 'static,
-        SS: DecisionStateStore<DS, E>,
+        SS: DecisionStateStore<ID, S, E>,
         D: Decision<StateQuery = S, Event = E>,
-        S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<S, Target = DS>,
-        DS: Send + Sync + Serialize + DeserializeOwned + IntoState<S> + MultiState<E>,
+        S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<ID, S>,
+        <S as IntoStatePart<ID, S>>::Target:
+            Send + Sync + Serialize + DeserializeOwned + IntoState<S> + MultiState<ID, E>,
         <D as Decision>::Error: 'static,
     {
-        let state = self
+        let loaded_state = self
             .state_store
-            .load(decision.state_query().into_state_part())
+            .load(decision.state_query())
             .await
             .map_err(Error::StateStore)?;
-        let version = state.version();
-        let inner_state = state.into_state();
-        let changes = decision.process(&inner_state).map_err(Error::Domain)?;
+        let changes = decision
+            .process(&loaded_state.state)
+            .map_err(Error::Domain)?;
         let events = self
             .state_store
             .persist(
-                inner_state.into_state_part(),
+                loaded_state,
                 changes.into_iter().collect(),
                 decision.validation_query(),
-                version,
             )
             .await
             .map_err(Error::StateStore)?;
@@ -157,9 +159,7 @@ mod test {
                 eq(2),
             )
             .once()
-            .return_once(|_, _: StreamQuery<ShoppingCartEvent>, _| {
-                vec![PersistedEvent::new(3, item_added_event("p2", "c1"))]
-            });
+            .return_once(|_, _, _| vec![PersistedEvent::new(3, item_added_event("p2", "c1"))]);
 
         let mut mock_add_item = MockDecision::new();
         mock_add_item
@@ -169,7 +169,7 @@ mod test {
         mock_add_item
             .expect_validation_query()
             .once()
-            .return_once(|| None);
+            .return_once(|| Option::<StreamQuery<i64, ShoppingCartEvent>>::None);
         mock_add_item
             .expect_process()
             .once()
