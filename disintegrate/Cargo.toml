@@ -27,10 +27,10 @@ disintegrate-macros = { version = "0.8.0", path = "../disintegrate-macros", opti
 thiserror = "1.0.61"
 mockall = "0.12.1"
 paste = "1.0.14"
-uuid = { version = "1.7.0", features = ["serde"] }
+uuid = { version = "1.11.0", features = ["serde"] }
 async-stream = "0.3.5"
 
 [dev-dependencies]
 assert2 = "0.3.14"
-uuid = { version = "1.7.0", features = ["v4"] }
+uuid = { version = "1.11.0", features = ["v4"] }
 tokio = {version = "1.35.1", features = ["macros", "rt-multi-thread"]}
