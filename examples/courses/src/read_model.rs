@@ -117,7 +117,7 @@ impl EventListener<i64, DomainEvent> for ReadModelProjection {
                 .unwrap();
             }
             DomainEvent::CourseRenamed { course_id, name } => {
-                sqlx::query("UPDATE course SET name = $2, event_id = $2 WHERE course_id = $1 and event_id < $2")
+                sqlx::query("UPDATE course SET name = $2, event_id = $3 WHERE course_id = $1 and event_id < $3")
                     .bind(course_id)
                     .bind(name)
                     .bind(event_id)
