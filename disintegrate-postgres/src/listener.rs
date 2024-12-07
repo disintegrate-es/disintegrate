@@ -173,6 +173,7 @@ pub struct PgEventListenerError {
 #[derive(Clone)]
 pub struct PgEventListenerConfig {
     poll: Duration,
+    fetch_size: usize,
     notifier_enabled: bool,
 }
 
@@ -189,8 +190,24 @@ impl PgEventListenerConfig {
     pub fn poller(poll: Duration) -> Self {
         Self {
             poll,
+            fetch_size: usize::MAX,
             notifier_enabled: false,
         }
+    }
+
+    /// Sets the fetch size for the event listener.
+    /// The fetch size determines the number of events to fetch from the event store at a time.
+    ///
+    /// # Parameters
+    ///
+    /// * `fetch_size`: The number of events to fetch from the event store at a time.
+    ///
+    /// # Returns
+    ///
+    /// A new `PgEventListenerConfig` instance.
+    pub fn fetch_size(mut self, fetch_size: usize) -> Self {
+        self.fetch_size = fetch_size;
+        self
     }
 
     /// Sets the db notifier.
@@ -301,7 +318,7 @@ where
             .query()
             .clone()
             .change_origin(last_processed_event_id);
-        let mut events_stream = self.event_store.stream(&query);
+        let mut events_stream = self.event_store.stream(&query).take(self.config.fetch_size);
 
         while let Some(event) = events_stream.next().await {
             let event = event.map_err(|_err| PgEventListenerError {
@@ -315,6 +332,9 @@ where
                         last_processed_event_id,
                     })
                 }
+            }
+            if self.shutdown_token.is_cancelled() {
+                break;
             }
         }
 
