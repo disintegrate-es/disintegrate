@@ -148,7 +148,7 @@ impl Identifier {
 macro_rules! ident {
     (#$id:ident) => {{
         let ident;
-        unsafe { ident = $crate::identifier::Identifier::unsafe_new(stringify!($id)) }
+        unsafe { ident = $crate::Identifier::unsafe_new(stringify!($id)) }
         ident
     }};
 }

@@ -40,14 +40,14 @@ use std::{collections::BTreeMap, ops::Deref};
 
 /// Represents a key-value pair of domain identifiers.
 ///
-/// The `DomainIdentifier` struct is used to associate a specific `Identifier` key with a corresponding `String` value.
+/// The `DomainIdentifier` struct is used to associate a specific `Identifier` key with a corresponding value.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DomainIdentifier {
     pub key: Identifier,
     pub value: IdentifierValue,
 }
 
-/// A set of domain identifiers, represented as a map of `Identifier` keys and `String` values.
+/// A set of domain identifiers, represented as a map of `Identifier` keys and values.
 ///
 /// The `DomainIdentifierSet` struct is used to store a collection of domain identifiers.
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -65,7 +65,7 @@ impl DomainIdentifierSet {
     }
 }
 
-/// Implements the `Deref` trait for `DomainIdentifierSet`, allowing it to be dereferenced to a `HashMap<Identifier, String>`.
+/// Implements the `Deref` trait for `DomainIdentifierSet`, allowing it to be dereferenced to a `HashMap<Identifier, IdentifierValue>`.
 /// This enables transparent access to the underlying `BTreeMap` of domain identifiers.
 impl Deref for DomainIdentifierSet {
     type Target = BTreeMap<Identifier, IdentifierValue>;
@@ -79,12 +79,12 @@ impl Deref for DomainIdentifierSet {
 #[macro_export]
 macro_rules! domain_identifiers{
     {}=> {
-        $crate::domain_identifier::DomainIdentifierSet::default()
+        $crate::DomainIdentifierSet::default()
     };
     {$($key:ident: $value:expr),*} => {{
         #[allow(unused_mut)]
         let mut domain_identifiers = std::collections::BTreeMap::<$crate::Identifier, $crate::IdentifierValue>::new();
         $(domain_identifiers.insert($crate::ident!(#$key), $crate::IntoIdentifierValue::into_identifier_value($value.clone()));)*
-        $crate::domain_identifier::DomainIdentifierSet::new(domain_identifiers)
+        $crate::DomainIdentifierSet::new(domain_identifiers)
     }};
 }

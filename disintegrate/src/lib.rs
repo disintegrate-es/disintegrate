@@ -1,21 +1,19 @@
 #![doc = include_str!("../README.md")]
 
-pub mod decision;
-pub mod domain_identifier;
+mod decision;
+mod domain_identifier;
 mod event;
 mod event_store;
-pub mod identifier;
+mod identifier;
 mod listener;
-pub mod stream_query;
+mod state;
+mod state_store;
+mod stream_query;
 mod testing;
 pub mod utils;
 
 #[doc(inline)]
-pub use crate::decision::{
-    Decision, DecisionMaker, DecisionStateStore, EventSourcedDecisionStateStore, IntoState,
-    IntoStatePart, MultiState, NoSnapshot, SnapshotConfig, StateMutate, StatePart, StateQuery,
-    StateSnapshotter, WithSnapshot,
-};
+pub use crate::decision::{Decision, DecisionMaker, Error as DecisionError, PersistDecision};
 #[doc(inline)]
 pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
 #[doc(inline)]
@@ -29,7 +27,14 @@ pub use crate::identifier::{Identifier, IdentifierType, IdentifierValue, IntoIde
 #[doc(inline)]
 pub use crate::listener::EventListener;
 #[doc(inline)]
-pub use crate::stream_query::{query, StreamQuery};
+pub use crate::state::{IntoState, IntoStatePart, MultiState, StateMutate, StatePart, StateQuery};
+#[doc(inline)]
+pub use crate::state_store::{
+    EventSourcedStateStore, LoadState, LoadedState, NoSnapshot, SnapshotConfig, StateSnapshotter,
+    WithSnapshot,
+};
+#[doc(inline)]
+pub use crate::stream_query::{query, StreamFilter, StreamQuery};
 #[doc(inline)]
 pub use crate::testing::TestHarness;
 

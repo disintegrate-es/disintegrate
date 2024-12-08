@@ -18,7 +18,7 @@ use std::marker::PhantomData;
 use crate::{Error, PgEventId};
 use async_stream::stream;
 use async_trait::async_trait;
-use disintegrate::stream_query::StreamQuery;
+use disintegrate::StreamQuery;
 use disintegrate::{DomainIdentifierInfo, EventStore};
 use disintegrate::{Event, PersistedEvent};
 use disintegrate_serde::Serde;
