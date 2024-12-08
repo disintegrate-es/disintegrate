@@ -21,7 +21,7 @@ type DecisionMaker =
 #[error(transparent)]
 pub struct Error {
     #[from]
-    source: disintegrate::decision::Error<crate::domain::Error>,
+    source: disintegrate::DecisionError<crate::domain::Error>,
 }
 
 #[tokio::main]
@@ -118,9 +118,9 @@ impl error::ResponseError for Error {
 
     fn status_code(&self) -> StatusCode {
         match self.source {
-            disintegrate::decision::Error::Domain(_) => StatusCode::BAD_REQUEST,
-            disintegrate::decision::Error::EventStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            disintegrate::decision::Error::StateStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            disintegrate::DecisionError::Domain(_) => StatusCode::BAD_REQUEST,
+            disintegrate::DecisionError::EventStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            disintegrate::DecisionError::StateStore(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

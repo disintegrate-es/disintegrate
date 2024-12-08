@@ -1,5 +1,5 @@
-use disintegrate::stream_query::StreamQuery;
 use disintegrate::Event;
+use disintegrate::StreamQuery;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::Postgres;

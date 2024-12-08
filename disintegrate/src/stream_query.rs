@@ -191,10 +191,10 @@ where
 #[macro_export]
 macro_rules! query {
     ($event_ty: ty) => {{
-        $crate::stream_query::query::<_, $event_ty, $event_ty>(None)
+        $crate::query::<_, $event_ty, $event_ty>(None)
     }};
     ($event_ty:ty; $($filter:tt)+ ) => {{
-        $crate::stream_query::query::<_, $event_ty, _>(Some($crate::filter!($event_ty; $($filter)*)))
+        $crate::query::<_, $event_ty, _>(Some($crate::filter!($event_ty; $($filter)*)))
     }};
     ($origin:expr => $event_ty:ty;  $($filter:tt)+ ) => {{
         $crate::query!($event_ty; $($filter)*).change_origin($origin)
@@ -249,7 +249,7 @@ macro_rules! filter {
 
                 )*
             }
-            $crate::stream_query::StreamFilter::<_, $event_ty>::new($crate::domain_identifiers!($($ident: $value.clone()),*))
+            $crate::StreamFilter::<_, $event_ty>::new($crate::domain_identifiers!($($ident: $value.clone()),*))
         }
     };
 }
@@ -261,12 +261,12 @@ macro_rules! union {
         Into::<$crate::stream_query::StreamQuery<_, _>>::into($query).cast()
     };
     ($query1:expr, $query2: expr) =>{
-        $crate::stream_query::StreamQuery::<_, _>::union(&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query1),&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query2))
+        $crate::StreamQuery::<_, _>::union(&Into::<$crate::StreamQuery<_, _>>::into($query1),&Into::<$crate::StreamQuery<_, _>>::into($query2))
     };
     ($query:expr, $($queries: expr),*) =>{
         {
                 let mut result = $crate::union!($($queries),*);
-                result = $crate::stream_query::StreamQuery::<_, _>::union(&Into::<$crate::stream_query::StreamQuery<_, _>>::into($query), &result);
+                result = $crate::StreamQuery::<_, _>::union(&Into::<$crate::StreamQuery<_, _>>::into($query), &result);
                 result
         }
     };

@@ -4,18 +4,11 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::event::EventId;
+use crate::state_store::LoadedState;
 use crate::stream_query::StreamQuery;
-use crate::BoxDynError;
 use crate::{event::Event, PersistedEvent};
+use crate::{BoxDynError, IntoState, IntoStatePart, LoadState, MultiState};
 
-mod state;
-mod state_store;
-
-pub use state::{IntoState, IntoStatePart, MultiState, StateMutate, StatePart, StateQuery};
-pub use state_store::{
-    DecisionStateStore, EventSourcedDecisionStateStore, NoSnapshot, SnapshotConfig,
-    StateSnapshotter, WithSnapshot,
-};
 /// Represents a business decision taken from a state built upon the occurred events.
 pub trait Decision: Send + Sync {
     type Event: Event + Clone + Send + Sync;
@@ -106,7 +99,7 @@ impl<SS> DecisionMaker<SS> {
     where
         ID: EventId,
         E: Event + Clone + Sync + Send + 'static,
-        SS: DecisionStateStore<ID, S, E>,
+        SS: LoadState<ID, S, E> + PersistDecision<ID, S, E>,
         D: Decision<StateQuery = S, Event = E>,
         S: Send + Sync + Serialize + DeserializeOwned + IntoStatePart<ID, S>,
         <S as IntoStatePart<ID, S>>::Target:
@@ -140,7 +133,7 @@ mod test {
     use mockall::predicate::eq;
 
     use super::*;
-    use crate::{utils::tests::*, EventSourcedDecisionStateStore, NoSnapshot, StateQuery};
+    use crate::{utils::tests::*, EventSourcedStateStore, NoSnapshot, StateQuery};
 
     #[tokio::test]
     async fn it_processes_a_decision() {
@@ -176,9 +169,31 @@ mod test {
             .return_once(|_| Ok(vec![item_added_event("p2", "c1")]));
 
         let event_store = MockEventStore::new(database);
-        let state_store = EventSourcedDecisionStateStore::new(event_store, NoSnapshot);
+        let state_store = EventSourcedStateStore::new(event_store, NoSnapshot);
         let decision_maker = DecisionMaker::new(state_store);
 
         decision_maker.make(mock_add_item).await.unwrap();
     }
+}
+
+/// Persists decision changes to the event store.
+#[async_trait::async_trait]
+pub trait PersistDecision<ID: EventId, S, E: Event + Clone> {
+    /// Persists the decision changes to the event store.
+    ///
+    /// # Parameters
+    ///
+    /// - `loaded_state`: The current state loaded from the event store, used to check if the events to be persisted have been produced from a non-stale state.
+    /// - `events`: A vector of events representing the changes to be stored.
+    /// - `validation_query`: An optional stream query used to validate the state before persisting changes.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of `PersistedEvent` if the operation is successful, or an error if the persist operation fails.
+    async fn persist(
+        &self,
+        loaded_state: LoadedState<ID, S>,
+        events: Vec<E>,
+        validation_query: Option<StreamQuery<ID, E>>,
+    ) -> Result<Vec<PersistedEvent<ID, E>>, BoxDynError>;
 }
