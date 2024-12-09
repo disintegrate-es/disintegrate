@@ -7,7 +7,10 @@ mod snapshotter;
 
 pub use crate::event_store::PgEventStore;
 #[cfg(feature = "listener")]
-pub use crate::listener::{PgEventListener, PgEventListenerConfig};
+pub use crate::listener::{
+    id_indexer::{Error as PgIdIndexerError, PgIdIndexer},
+    PgEventListener, PgEventListenerConfig,
+};
 pub use crate::snapshotter::PgSnapshotter;
 use disintegrate::{DecisionMaker, Event, EventSourcedStateStore, NoSnapshot, WithSnapshot};
 use disintegrate_serde::Serde;

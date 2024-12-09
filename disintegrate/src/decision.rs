@@ -128,6 +128,28 @@ impl<SS> DecisionMaker<SS> {
     }
 }
 
+/// Persists decision changes to the event store.
+#[async_trait::async_trait]
+pub trait PersistDecision<ID: EventId, S, E: Event + Clone> {
+    /// Persists the decision changes to the event store.
+    ///
+    /// # Parameters
+    ///
+    /// - `loaded_state`: The current state loaded from the event store, used to check if the events to be persisted have been produced from a non-stale state.
+    /// - `events`: A vector of events representing the changes to be stored.
+    /// - `validation_query`: An optional stream query used to validate the state before persisting changes.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of `PersistedEvent` if the operation is successful, or an error if the persist operation fails.
+    async fn persist(
+        &self,
+        loaded_state: LoadedState<ID, S>,
+        events: Vec<E>,
+        validation_query: Option<StreamQuery<ID, E>>,
+    ) -> Result<Vec<PersistedEvent<ID, E>>, BoxDynError>;
+}
+
 #[cfg(test)]
 mod test {
     use mockall::predicate::eq;
@@ -174,26 +196,4 @@ mod test {
 
         decision_maker.make(mock_add_item).await.unwrap();
     }
-}
-
-/// Persists decision changes to the event store.
-#[async_trait::async_trait]
-pub trait PersistDecision<ID: EventId, S, E: Event + Clone> {
-    /// Persists the decision changes to the event store.
-    ///
-    /// # Parameters
-    ///
-    /// - `loaded_state`: The current state loaded from the event store, used to check if the events to be persisted have been produced from a non-stale state.
-    /// - `events`: A vector of events representing the changes to be stored.
-    /// - `validation_query`: An optional stream query used to validate the state before persisting changes.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a vector of `PersistedEvent` if the operation is successful, or an error if the persist operation fails.
-    async fn persist(
-        &self,
-        loaded_state: LoadedState<ID, S>,
-        events: Vec<E>,
-        validation_query: Option<StreamQuery<ID, E>>,
-    ) -> Result<Vec<PersistedEvent<ID, E>>, BoxDynError>;
 }

@@ -7,6 +7,8 @@
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod id_indexer;
+
 use crate::{Error, PgEventId};
 use async_trait::async_trait;
 use disintegrate::{Event, EventListener, EventStore, StreamQuery};
