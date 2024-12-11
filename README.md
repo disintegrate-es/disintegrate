@@ -271,7 +271,7 @@ To add Disintegrate to your project, follow these steps:
     use event::DomainEvent;
 
     use anyhow::{Ok, Result};
-    use disintegrate::serde::json::Json;
+    use disintegrate::{serde::json::Json, NoSnapshot};
     use disintegrate_postgres::PgEventStore;
     use sqlx::{postgres::PgConnectOptions, PgPool};
 
@@ -290,7 +290,7 @@ To add Disintegrate to your project, follow these steps:
         let event_store = PgEventStore::new(pool, serde).await?;
 
         // Create a Postgres DecisionMaker
-        let decision_maker = disintegrate_postgres::decision_maker(event_store);
+        let decision_maker = disintegrate_postgres::decision_maker(event_store, NoSnapshot);
 
         // Make the decision. This performs the business decision and persists the changes into the
         // event store
