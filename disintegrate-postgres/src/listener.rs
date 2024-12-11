@@ -32,6 +32,7 @@ where
 {
     executors: Vec<Box<dyn EventListenerExecutor<E>>>,
     event_store: PgEventStore<E, S>,
+    intialize: bool,
     shutdown_token: CancellationToken,
 }
 
@@ -54,7 +55,24 @@ where
             event_store,
             executors: vec![],
             shutdown_token: CancellationToken::new(),
+            intialize: true,
         }
+    }
+
+    /// Marks the event listener as uninitialized, indicating that the database setup is already
+    /// done.
+    ///
+    /// This method sets the `initialize` flag to `false`. When the flag is unset, the listener will not
+    /// initialize the database. If you set `initialize` to `false`, you must ensure that the
+    /// database is initialized before running the listener. Check the SQL files in the `listener/sql` folder
+    /// to initialize the database.
+    ///
+    /// # Returns
+    ///
+    /// The updated `PgEventListener` instance with the `uninitialized` flag set.
+    pub fn uninitialized(mut self) -> Self {
+        self.intialize = false;
+        self
     }
 
     /// Registers an event listener to the `PgEventListener`.
@@ -91,7 +109,9 @@ where
     ///
     /// A `Result` indicating the success or failure of the listener process.
     pub async fn start(self) -> Result<(), Error> {
-        setup(&self.event_store.pool).await?;
+        if self.intialize {
+            setup(&self.event_store.pool).await?;
+        }
         let mut handles = vec![];
         let mut wakers = vec![];
         for executor in self.executors {

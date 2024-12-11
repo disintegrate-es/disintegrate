@@ -10,7 +10,7 @@ mod tests;
 use futures::stream::BoxStream;
 use insert_builder::InsertBuilder;
 use query_builder::QueryBuilder;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 use std::error::Error as StdError;
 
 use std::marker::PhantomData;
@@ -24,7 +24,6 @@ use disintegrate::{Event, PersistedEvent};
 use disintegrate_serde::Serde;
 
 use futures::StreamExt;
-use sqlx::PgPool;
 
 /// PostgreSQL event store implementation.
 #[derive(Clone)]
@@ -50,11 +49,29 @@ where
     /// * `serde` - The serialization implementation for the event payload.
     pub async fn new(pool: PgPool, serde: S) -> Result<Self, Error> {
         setup::<E>(&pool).await?;
-        Ok(Self {
+        Ok(Self::new_uninitialized(pool, serde))
+    }
+    /// Creates a new instance of `PgEventStore`.
+    ///
+    /// This constructor does not initialize the database or add the
+    /// `domain_identifier` columns necessary for `disintegrate` to function properly.
+    /// If you need to initialize the database, use `PgEventStore::new` instead.
+    ///
+    /// If you plan to use this constructor, ensure that the `disintegrate` is
+    /// properly initialized. Refer to the SQL files in the "event_store/sql" directory
+    /// to recreate the default structure. Additionally, all `domain_identifier` columns
+    /// and their corresponding indexes must be created manually.
+    ///
+    /// # Arguments
+    ///
+    /// * `pool` - The PostgreSQL connection pool.
+    /// * `serde` - The serialization implementation for the event payload.
+    pub fn new_uninitialized(pool: PgPool, serde: S) -> Self {
+        Self {
             pool,
             serde,
             event_type: PhantomData,
-        })
+        }
     }
 }
 

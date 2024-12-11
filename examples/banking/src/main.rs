@@ -8,7 +8,8 @@ use actix_web::{
     App, HttpResponse, HttpServer, Result,
 };
 
-use disintegrate_postgres::{PgDecisionMaker, PgEventStore, WithPgSnapshot};
+use disintegrate::WithSnapshot;
+use disintegrate_postgres::{PgDecisionMaker, PgEventStore, PgSnapshotter, WithPgSnapshot};
 use domain::DomainEvent;
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgConnectOptions, PgPool};
@@ -32,9 +33,10 @@ async fn main() -> anyhow::Result<()> {
     let pool = PgPool::connect_with(connect_options).await?;
 
     let serde = disintegrate::serde::json::Json::<DomainEvent>::default();
-    let event_store = PgEventStore::new(pool.clone(), serde).await?;
+    let event_store = PgEventStore::new_uninitialized(pool.clone(), serde);
+    let snapshotter = PgSnapshotter::new(pool, 10).await?;
     let decision_maker =
-        disintegrate_postgres::decision_maker_with_snapshot(event_store, 2).await?;
+        disintegrate_postgres::decision_maker(event_store, WithSnapshot::new(snapshotter));
 
     Ok(HttpServer::new(move || {
         App::new()

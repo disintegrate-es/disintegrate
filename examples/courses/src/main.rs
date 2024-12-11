@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Ok, Result};
 use application::Application;
-use disintegrate::serde::prost::Prost;
-use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore};
+use disintegrate::{serde::prost::Prost, WithSnapshot};
+use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore, PgSnapshotter};
 use sqlx::{postgres::PgConnectOptions, PgPool};
 use tokio::signal;
 use tracing_subscriber::{self, fmt::format::FmtSpan};
@@ -23,8 +23,9 @@ async fn main() -> Result<()> {
     let pool = PgPool::connect_with(PgConnectOptions::new()).await?;
     let serde = Prost::<DomainEvent, proto::Event>::default();
     let event_store = PgEventStore::new(pool.clone(), serde).await?;
+    let snapshotter = PgSnapshotter::new(pool.clone(), 10).await?;
     let decision_maker =
-        disintegrate_postgres::decision_maker_with_snapshot(event_store.clone(), 10).await?;
+        disintegrate_postgres::decision_maker(event_store.clone(), WithSnapshot::new(snapshotter));
 
     let read_model = read_model::Repository::new(pool.clone());
     let app = Application::new(decision_maker, read_model);

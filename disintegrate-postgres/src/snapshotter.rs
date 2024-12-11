@@ -28,7 +28,7 @@ pub struct PgSnapshotter {
 }
 
 impl PgSnapshotter {
-    /// Creates a new instance of `PgSnapshotter` with the specified PostgreSQL connection pool and snapshot frequency.
+    /// Creates and initializes a new instance of `PgSnapshotter` with the specified PostgreSQL connection pool and snapshot frequency.
     ///
     /// # Arguments
     ///
@@ -40,7 +40,27 @@ impl PgSnapshotter {
     /// A new `PgSnapshotter` instance.
     pub async fn new(pool: PgPool, every: u64) -> Result<Self, Error> {
         setup(&pool).await?;
-        Ok(Self { pool, every })
+        Ok(Self::new_uninitialized(pool, every))
+    }
+
+    /// Creates a new instance of `PgSnapshotter` with the specified PostgreSQL connection pool and snapshot frequency.
+    ///
+    /// This constructor does not initialize the database. If you need to initialize the database,
+    /// use `PgSnapshotter::new` instead.
+    ///
+    /// If you use this constructor, ensure that the database is already initialized.
+    /// Refer to the SQL files in the `snapshotter/sql` folder for the necessary schema.
+    ///
+    /// # Arguments
+    ///
+    /// - `pool`: A PostgreSQL connection pool (`PgPool`) representing the database connection.
+    /// - `every`: The frequency of snapshot creation, defined as the number of events between consecutive snapshots.
+    ///
+    /// # Returns
+    ///
+    /// A new `PgSnapshotter` instance.
+    pub fn new_uninitialized(pool: PgPool, every: u64) -> Self {
+        Self { pool, every }
     }
 }
 
