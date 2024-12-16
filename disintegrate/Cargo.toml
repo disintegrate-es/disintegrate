@@ -21,7 +21,7 @@ async-trait = "0.1.80"
 futures = "0.3.30"
 lazy_static = "1.4.0"
 regex = "1.10.5"
-serde = { version = "1.0.196", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
 disintegrate-serde = { version = "1.0.0", path = "../disintegrate-serde", optional = true }
 disintegrate-macros = { version = "1.0.0", path = "../disintegrate-macros", optional = true }
 thiserror = "1.0.61"

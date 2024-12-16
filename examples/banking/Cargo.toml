@@ -11,7 +11,7 @@ repository.workspace = true
 disintegrate = { version = "1.0.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
 disintegrate-postgres = { version = "1.0.0", path = "../../disintegrate-postgres" }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "signal"] }
-serde = { version = "1.0.196", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
 thiserror = "1.0.61"
 anyhow = "1.0.94"
 dotenv = "0.15.0"
