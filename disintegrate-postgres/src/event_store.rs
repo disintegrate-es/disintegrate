@@ -204,7 +204,7 @@ where
 
     /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying  
     /// whether new events have been added since the last read.  
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `events` - A vector of events to be appended.
@@ -213,7 +213,10 @@ where
     ///
     /// A `Result` containing a vector of `PersistedEvent` representing the appended events,
     /// or an error of type `Self::Error`.
-    async fn append_unchecked(&self, events: Vec<E>) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
+    async fn append_unchecked(
+        &self,
+        events: Vec<E>,
+    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
     where
         E: Clone + 'async_trait,
     {
