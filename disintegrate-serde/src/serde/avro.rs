@@ -1,4 +1,4 @@
-/// A module for serializing and deserializing data using Avro schema.
+//! A module for serializing and deserializing data using Avro schema.
 use std::marker::PhantomData;
 
 use super::Error;

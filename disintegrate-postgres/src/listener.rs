@@ -184,7 +184,7 @@ pub struct PgEventListenerError {
     last_processed_event_id: PgEventId,
 }
 
-/// PostgreSQL listener Configuration
+/// PostgreSQL listener Configuration.
 ///
 /// # Properties:
 ///
