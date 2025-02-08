@@ -75,8 +75,6 @@ where
     ///
     /// This method is useful when you are certain that no other process  
     /// has modified the event store in a way that would make your logic stale.  
-    /// Additionally, it does **not** check for duplicates, which may occur  
-    /// if the append operation is triggered from an **at-least-once delivery** mechanism.  
     ///
     /// If you need to guarantee that no duplicate events are added,  
     /// use the `append` method instead, providing a query that ensures uniqueness.  
