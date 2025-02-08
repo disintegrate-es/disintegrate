@@ -17,7 +17,7 @@ avro = ["dep:apache-avro"]
 full = ["json", "protobuf", "avro", "prost"]
 
 [dependencies]
-thiserror = "1.0.61"
+thiserror = "2.0.11"
 serde_json = { version = "1.0.138", optional = true }
 serde = { version = "1.0.196", features = ["derive"] }
 protobuf = { version = "3.7.1", optional = true }
