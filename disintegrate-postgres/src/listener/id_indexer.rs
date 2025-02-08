@@ -102,6 +102,7 @@ impl<E: Event + Clone> PgIdIndexer<E> {
     }
 }
 
+/// PostgreSQL Id Indexer error.
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
 pub struct Error(#[from] sqlx::Error);

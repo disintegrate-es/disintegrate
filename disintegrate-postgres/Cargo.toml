@@ -31,3 +31,6 @@ paste = "1.0.14"
 
 [dev-dependencies]
 disintegrate-serde = { version = "1.0.0", path = "../disintegrate-serde", features = ["json"] }
+
+[package.metadata.docs.rs]
+all-features = true
