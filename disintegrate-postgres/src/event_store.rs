@@ -1,7 +1,7 @@
-//! PostgreSQL Snapshotter
+//! PostgreSQL Event Store
 //!
-//! This module provides an implementation of the `Snapshotter` trait using PostgreSQL as the underlying storage.
-//! It allows storing and retrieving snapshots from a PostgreSQL database.
+//! This module provides an implementation of the `EventStore` trait using PostgreSQL as the underlying storage.
+//! It allows storing and retrieving events from a PostgreSQL database.
 mod insert_builder;
 mod query_builder;
 #[cfg(test)]

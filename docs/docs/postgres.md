@@ -65,6 +65,19 @@ Manual data migration is may be needed when the following changes are made to th
 
 1. **Adding a New Domain Identifier**: If you want to search old event with this new id, a data migration is required to populate the new id column in the existing events.
 2. **Declaring an Existing Field as a Domain Identifier**: Migration is necessary to populate this identifier for old events. Even if the event payload contains the domain identifier value, Disintegrate does not automatically populate the domain identifier column for the already persisted events.
+To address this, we provide an `EventListener` called `PgIdIndexer`. This helper processes old events and populates the missing domain identifier column in the event store, ensuring they are indexed correctly.
+
+```rust
+let id_indexer = PgIdIndexer::<DomainEvent>::new("index_existing_id", pool);
+PgEventListener::builder(event_store)
+    .register_listener(
+        id_indexer,
+        PgEventListenerConfig::poller(Duration::from_secs(10)).with_notifier()
+    )
+    .start_with_shutdown(shutdown())
+    .await?;
+```
+
 3. **Deleting an Existing Domain Identifier**: Disintegrate does not automatically remove the domain identifier column.  This deliberate design choice is made to support a blue-green rollout strategy.
 
 :::warning
