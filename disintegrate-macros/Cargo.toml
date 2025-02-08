@@ -22,3 +22,6 @@ syn = { version = "2.0.65", features = ["full"] }
 
 [dev-dependencies]
 disintegrate = { version = "2.0.0", path = "../disintegrate", features = ["macros"] }
+
+[package.metadata.docs.rs]
+all-features = true

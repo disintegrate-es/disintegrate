@@ -7,6 +7,6 @@ fn main() {
         .file_descriptor_set_path(out_dir.join("courses_descriptor.bin"))
         .build_server(true)
         .build_client(false)
-        .compile(&["proto/api.proto", "proto/event.proto"], &["proto"])
+        .compile_protos(&["proto/api.proto", "proto/event.proto"], &["proto"])
         .unwrap();
 }

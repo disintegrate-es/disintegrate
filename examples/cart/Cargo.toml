@@ -14,8 +14,8 @@ sqlx = { version = "0.8.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "signal"] }
 anyhow = "1.0.94"
 dotenv = "0.15.0"
-serde = { version = "1.0.196", features = ["derive"] }
-thiserror = "1.0.61"
+serde = { version = "1.0.217", features = ["derive"] }
+thiserror = "2.0.11"
 
 [build-dependencies]
-tonic-build = { version = "0.11.0", features = ["prost"] }
+tonic-build = { version = "0.12.3", features = ["prost"] }
