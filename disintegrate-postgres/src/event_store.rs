@@ -201,6 +201,50 @@ where
 
         Ok(persisted_events)
     }
+
+    /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying  
+    /// whether new events have been added since the last read.  
+    /// 
+    /// # Arguments
+    ///
+    /// * `events` - A vector of events to be appended.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of `PersistedEvent` representing the appended events,
+    /// or an error of type `Self::Error`.
+    async fn append_unchecked(&self, events: Vec<E>) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
+    where
+        E: Clone + 'async_trait,
+    {
+        let mut persisted_events = Vec::with_capacity(events.len());
+        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
+        for event in events {
+            let mut sequence_insert = InsertBuilder::new(&event, "event_sequence")
+                .with_consumed(true)
+                .returning("event_id");
+            let row = sequence_insert.build().fetch_one(&self.pool).await?;
+            persisted_events_ids.push(row.get(0));
+            persisted_events.push(PersistedEvent::new(row.get(0), event));
+        }
+
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE event_sequence SET committed = true WHERE event_id = ANY($1)")
+            .bind(persisted_events_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_update_event_id_err)?;
+        for event in &persisted_events {
+            let payload = self.serde.serialize((**event).clone());
+            let mut event_insert = InsertBuilder::new(&**event, "event")
+                .with_id(event.id())
+                .with_payload(&payload);
+            event_insert.build().execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+
+        Ok(persisted_events)
+    }
 }
 
 pub async fn setup<E: Event>(pool: &PgPool) -> Result<(), Error> {

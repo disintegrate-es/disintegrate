@@ -16,6 +16,7 @@ where
     event: &'a E,
     id: Option<PgEventId>,
     payload: Option<&'a [u8]>,
+    consumed: Option<bool>,
     returning: Option<&'a str>,
 }
 
@@ -35,6 +36,7 @@ where
             event,
             id: None,
             payload: None,
+            consumed: None,
             returning: None,
         }
     }
@@ -56,6 +58,16 @@ where
     /// * `payload` - The payload of the event.
     pub fn with_payload(mut self, payload: &'a [u8]) -> Self {
         self.payload = Some(payload);
+        self
+    }
+
+    /// Sets the consumed flag for the event to be inserted.
+    ///
+    /// # Arguments
+    ///
+    /// * `consumed` - The value for the consumed flag.
+    pub fn with_consumed(mut self, consumed: bool) -> Self {
+        self.consumed = Some(consumed);
         self
     }
 
@@ -88,6 +100,10 @@ where
             separated_builder.push("payload");
         }
 
+        if self.consumed.is_some() {
+            separated_builder.push("consumed");
+        }
+
         separated_builder.push_unseparated(") VALUES (");
 
         separated_builder.push_bind_unseparated(self.event.name());
@@ -108,6 +124,10 @@ where
 
         if let Some(payload) = self.payload {
             separated_builder.push_bind(payload);
+        }
+
+        if let Some(consumed) = self.consumed {
+            separated_builder.push(if consumed { 1 } else { 0 });
         }
 
         separated_builder.push_unseparated(")");

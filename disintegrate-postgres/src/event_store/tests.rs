@@ -136,6 +136,41 @@ async fn it_appends_events(pool: PgPool) {
     );
 }
 
+#[sqlx::test]
+async fn it_appends_unchecked(pool: PgPool) {
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+    let events: Vec<ShoppingCartEvent> = vec![
+        added_event("product_1", "cart_1"),
+        removed_event("product_2", "cart_1"),
+    ];
+
+    event_store.append_unchecked(events).await.unwrap();
+
+    let stored_events = sqlx::query("SELECT event_id, event_type, payload FROM event")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(stored_events.len(), 2);
+    assert_event_row(
+        stored_events.first().unwrap(),
+        1,
+        "ShoppingCartAdded",
+        added_event("product_1", "cart_1"),
+    );
+    assert_event_row(
+        stored_events.get(1).unwrap(),
+        2,
+        "ShoppingCartRemoved",
+        removed_event("product_2", "cart_1"),
+    );
+}
+
+#[track_caller]
 fn assert_event_row(
     row: &PgRow,
     event_id: PgEventId,
