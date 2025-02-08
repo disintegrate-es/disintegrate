@@ -10,8 +10,8 @@ repository.workspace = true
 [dependencies]
 anyhow = "1.0.94"
 async-trait = "0.1.80"
-disintegrate = {version = "1.0.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
-disintegrate-postgres = { version = "1.0.0", path = "../../disintegrate-postgres", features = ["listener"] }
+disintegrate = {version = "2.0.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
+disintegrate-postgres = { version = "2.0.0", path = "../../disintegrate-postgres", features = ["listener"] }
 rust_decimal = "1.35.0"
 sqlx = { version = "0.8.2", features = [ "runtime-tokio-rustls" , "postgres" ] }
 thiserror = "1.0.61"
