@@ -325,22 +325,28 @@ pub mod tests {
             query: StreamQuery<i64, QE>,
             last_event_id: i64,
         ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
+        fn append_without_validation(
+            &self,
+            events: Vec<ShoppingCartEvent>,
+        ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
     }
 
     mock! {
         pub Database {}
         impl Database for Database {
-        fn stream<QE: Event + Clone + 'static + Send + Sync>(
-            &self,
-            query: &StreamQuery<i64, QE>,
-        ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
+            fn stream<QE: Event + Clone + 'static + Send + Sync>(
+                &self,
+                query: &StreamQuery<i64, QE>,
+            ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
 
-        fn append<QE: Event + Clone + 'static + Send + Sync>(
-            &self,
-            events: Vec<ShoppingCartEvent>,
-            query: StreamQuery<i64, QE>,
-            last_event_id: i64,
-        ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
+            fn append<QE: Event + Clone + 'static + Send + Sync>(
+                &self,
+                events: Vec<ShoppingCartEvent>,
+                query: StreamQuery<i64, QE>,
+                last_event_id: i64,
+            ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
+
+            fn append_without_validation(&self, events: Vec<ShoppingCartEvent>) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
         }
         impl Clone for Database {
             fn clone(&self) -> Self;
@@ -372,6 +378,13 @@ pub mod tests {
             QE: Event + 'static + Clone + Send + Sync,
         {
             Ok(self.database.append(events, query, last_event_id))
+        }
+
+        async fn append_without_validation(
+            &self,
+            events: Vec<ShoppingCartEvent>,
+        ) -> Result<Vec<PersistedEvent<i64, ShoppingCartEvent>>, Self::Error> {
+            Ok(self.database.append_without_validation(events))
         }
     }
     #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
