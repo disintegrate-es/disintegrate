@@ -213,7 +213,7 @@ where
     ///
     /// A `Result` containing a vector of `PersistedEvent` representing the appended events,
     /// or an error of type `Self::Error`.
-    async fn append_unchecked(
+    async fn append_without_validation(
         &self,
         events: Vec<E>,
     ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>

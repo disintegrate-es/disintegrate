@@ -325,7 +325,7 @@ pub mod tests {
             query: StreamQuery<i64, QE>,
             last_event_id: i64,
         ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
-        fn append_unchecked(
+        fn append_without_validation(
             &self,
             events: Vec<ShoppingCartEvent>,
         ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
@@ -346,7 +346,7 @@ pub mod tests {
                 last_event_id: i64,
             ) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
 
-            fn append_unchecked(&self, events: Vec<ShoppingCartEvent>) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
+            fn append_without_validation(&self, events: Vec<ShoppingCartEvent>) -> Vec<PersistedEvent<i64, ShoppingCartEvent>>;
         }
         impl Clone for Database {
             fn clone(&self) -> Self;
@@ -380,11 +380,11 @@ pub mod tests {
             Ok(self.database.append(events, query, last_event_id))
         }
 
-        async fn append_unchecked(
+        async fn append_without_validation(
             &self,
             events: Vec<ShoppingCartEvent>,
         ) -> Result<Vec<PersistedEvent<i64, ShoppingCartEvent>>, Self::Error> {
-            Ok(self.database.append_unchecked(events))
+            Ok(self.database.append_without_validation(events))
         }
     }
     #[derive(Default, Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

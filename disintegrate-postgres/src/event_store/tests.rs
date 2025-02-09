@@ -149,7 +149,7 @@ async fn it_appends_unchecked(pool: PgPool) {
         removed_event("product_2", "cart_1"),
     ];
 
-    event_store.append_unchecked(events).await.unwrap();
+    event_store.append_without_validation(events).await.unwrap();
 
     let stored_events = sqlx::query("SELECT event_id, event_type, payload FROM event")
         .fetch_all(&pool)

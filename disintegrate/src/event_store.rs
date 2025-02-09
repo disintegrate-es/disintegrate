@@ -86,7 +86,7 @@ where
     ///# Returns
     ///
     /// A `Result` containing a vector of `PersistedEvent` representing the appended events, or an error.
-    async fn append_unchecked(
+    async fn append_without_validation(
         &self,
         events: Vec<E>,
     ) -> Result<Vec<PersistedEvent<ID, E>>, Self::Error>
