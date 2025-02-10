@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 disintegrate = { version = "2.0.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
 disintegrate-postgres = { version = "2.0.0", path = "../../disintegrate-postgres" }
-tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "signal"] }
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
 anyhow = "1.0.94"
