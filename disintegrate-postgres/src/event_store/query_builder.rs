@@ -12,6 +12,7 @@ where
     query: &'a StreamQuery<PgEventId, QE>,
     builder: String,
     alias: Option<&'a str>,
+    from_beginning: bool,
 }
 
 impl<'a, QE> CriteriaBuilder<'a, QE>
@@ -29,11 +30,17 @@ where
             query,
             builder: String::new(),
             alias: None,
+            from_beginning: false
         }
     }
 
     pub fn alias(mut self, alias: &'a str) -> Self {
         self.alias = Some(alias);
+        self
+    }
+
+    pub fn from_beginning(mut self) -> Self {
+        self.from_beginning = true;
         self
     }
 
@@ -57,8 +64,8 @@ where
             };
             let has_events = !events.is_empty();
             self.builder.push_str("(");
-            if filter.origin() > 0 {
-                self.builder.push_str(&format!("{alias_prefix}event_id > "));
+            if filter.origin() > 0 && !self.from_beginning {
+                self.builder.push_str(&format!("{alias_prefix}sequence > "));
                 self.builder.push_str(&filter.origin().to_string());
                 if has_events {
                     self.builder.push_str(" AND (");
@@ -101,7 +108,7 @@ where
                 self.builder.push_str(")");
                 events.peek().map(|_| self.builder.push_str(" OR "));
             }
-            if filter.origin() > 0 && has_events {
+            if filter.origin() > 0 && !self.from_beginning && has_events {
                 self.builder.push_str(")");
             }
             self.builder.push_str(")");
