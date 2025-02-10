@@ -1,24 +1,20 @@
+use crate::PgEventId;
 use disintegrate::Event;
 use disintegrate::StreamQuery;
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
-use sqlx::Postgres;
-
-use crate::PgEventId;
 
 /// SQL Query Builder
 ///
 /// A builder for constructing SQL query based on the stream query.
-pub struct QueryBuilder<'a, QE>
+pub struct CriteriaBuilder<'a, QE>
 where
     QE: Event + Clone,
 {
-    query: StreamQuery<PgEventId, QE>,
-    builder: sqlx::QueryBuilder<'a, Postgres>,
-    end: Option<&'a str>,
+    query: &'a StreamQuery<PgEventId, QE>,
+    builder: String,
+    alias: Option<&'a str>,
 }
 
-impl<'a, QE> QueryBuilder<'a, QE>
+impl<'a, QE> CriteriaBuilder<'a, QE>
 where
     QE: Event + Clone,
 {
@@ -28,36 +24,26 @@ where
     ///
     /// * `query` - The stream query specifying the filtering and ordering options.
     /// * `init` - The initial SQL fragment.
-    pub fn new(query: StreamQuery<PgEventId, QE>, init: &str) -> Self {
+    pub fn new(query: &'a StreamQuery<PgEventId, QE>) -> Self {
         Self {
             query,
-            builder: sqlx::QueryBuilder::new(init),
-            end: None,
+            builder: String::new(),
+            alias: None,
         }
     }
 
-    /// Sets the end SQL fragment of the query.
-    ///
-    /// # Arguments
-    ///
-    /// * `end` - The SQL fragment to be set as the end of the query.
-    pub fn end_with(mut self, end: &'a str) -> Self {
-        self.end = Some(end);
+    pub fn alias(mut self, alias: &'a str) -> Self {
+        self.alias = Some(alias);
         self
     }
 
     /// Builds the SQL criteria string.
-    pub fn build(&'a mut self) -> Query<'a, Postgres, PgArguments> {
-        self.build_criteria(self.query.clone());
-
-        if let Some(end) = self.end {
-            self.builder.push(format!(" {end}"));
-        }
-        self.builder.build()
-    }
-
-    fn build_criteria(&mut self, query: StreamQuery<PgEventId, QE>) {
-        let mut filters = query.filters().iter().peekable();
+    pub fn build(mut self) -> String {
+        let alias_prefix = self
+            .alias
+            .map(|alias| format!("{alias}."))
+            .unwrap_or_default();
+        let mut filters = self.query.filters().iter().peekable();
         while let Some(filter) = filters.next() {
             let events: Vec<&str> = if let Some(excluted_event) = filter.excluded_events() {
                 filter
@@ -70,19 +56,20 @@ where
                 filter.events().to_vec()
             };
             let has_events = !events.is_empty();
-            self.builder.push("(");
+            self.builder.push_str("(");
             if filter.origin() > 0 {
-                self.builder.push("event_id > ");
-                self.builder.push(filter.origin());
+                self.builder.push_str(&format!("{alias_prefix}event_id > "));
+                self.builder.push_str(&filter.origin().to_string());
                 if has_events {
-                    self.builder.push(" AND (");
+                    self.builder.push_str(" AND (");
                 }
             }
 
             let mut events = events.into_iter().peekable();
             while let Some(event) = events.next() {
-                self.builder.push("(");
-                self.builder.push(format!("event_type = '{event}'"));
+                self.builder.push_str("(");
+                self.builder
+                    .push_str(&format!("{alias_prefix}event_type = '{event}'"));
                 let event_info = QE::SCHEMA.event_info(event).unwrap();
                 let mut event_identifiers = filter
                     .identifiers()
@@ -90,30 +77,38 @@ where
                     .filter(|(ident, _)| event_info.has_domain_identifier(ident))
                     .peekable();
 
-                event_identifiers.peek().map(|_| self.builder.push(" AND "));
+                event_identifiers
+                    .peek()
+                    .map(|_| self.builder.push_str(" AND "));
 
                 while let Some((ident, value)) = event_identifiers.next() {
-                    self.builder.push(format!("{ident} = "));
+                    self.builder.push_str(&format!("{alias_prefix}{ident} = "));
                     match value {
                         disintegrate::IdentifierValue::String(value) => {
-                            self.builder.push_bind(value.clone())
+                            self.builder.push_str(&format!("'{}'", value.clone()));
                         }
-                        disintegrate::IdentifierValue::i64(value) => self.builder.push_bind(*value),
+                        disintegrate::IdentifierValue::i64(value) => {
+                            self.builder.push_str(&value.to_string())
+                        }
                         disintegrate::IdentifierValue::Uuid(value) => {
-                            self.builder.push_bind(*value)
+                            self.builder.push_str(&format!("'{}'", value.clone()))
                         }
                     };
-                    event_identifiers.peek().map(|_| self.builder.push(" AND "));
+                    event_identifiers
+                        .peek()
+                        .map(|_| self.builder.push_str(" AND "));
                 }
-                self.builder.push(")");
-                events.peek().map(|_| self.builder.push(" OR "));
+                self.builder.push_str(")");
+                events.peek().map(|_| self.builder.push_str(" OR "));
             }
             if filter.origin() > 0 && has_events {
-                self.builder.push(")");
+                self.builder.push_str(")");
             }
-            self.builder.push(")");
-            filters.peek().map(|_| self.builder.push(" OR "));
+            self.builder.push_str(")");
+            filters.peek().map(|_| self.builder.push_str(" OR "));
         }
+
+        self.builder
     }
 }
 
@@ -124,7 +119,6 @@ mod tests {
         domain_identifiers, event_types, ident, query, DomainIdentifierInfo, DomainIdentifierSet,
         Event, EventInfo, EventSchema, IdentifierType,
     };
-    use sqlx::Execute;
 
     #[allow(dead_code)]
     #[derive(Clone)]
@@ -165,71 +159,69 @@ mod tests {
             domain_identifiers! {}
         }
     }
+
     #[test]
-    fn it_builds_query() {
+    fn it_builds_criteria() {
         let query = query!(TestEvent);
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
         assert_eq!(
-            sql_builder.build().sql(),
-            "SELECT * FROM event WHERE ((event_type = 'Bar') OR (event_type = 'Foo'))"
+            criteria_builder.build(),
+            "((event_type = 'Bar') OR (event_type = 'Foo'))"
         );
     }
 
     #[test]
-    fn it_builds_query_with_an_id_filter() {
+    fn it_builds_criteria_with_an_id_filter() {
         let query = query!(TestEvent; foo_id == "value");
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
         assert_eq!(
-            sql_builder.build().sql(),
-            "SELECT * FROM event WHERE ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = $1))"
+            criteria_builder.build(),
+            "((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value'))"
         );
     }
 
     #[test]
-    fn it_builds_query_with_two_ids() {
+    fn it_builds_criteria_with_two_ids() {
         let query = query!(TestEvent; foo_id == "value", bar_id == "value2");
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
         assert_eq!(
-            sql_builder.build().sql(),
-            "SELECT * FROM event WHERE ((event_type = 'Bar' AND bar_id = $1) OR (event_type = 'Foo' AND foo_id = $2))"
+            criteria_builder.build(),
+            "((event_type = 'Bar' AND bar_id = 'value2') OR (event_type = 'Foo' AND foo_id = 'value'))"
         );
     }
 
     #[test]
-    fn it_builds_query_with_origin() {
+    fn it_builds_criteria_with_origin() {
         let query = query!(10 => TestEvent; foo_id == "value");
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
         assert_eq!(
-            sql_builder.build().sql(),
-            "SELECT * FROM event WHERE (event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = $1)))"
+            criteria_builder.build(),
+            "(event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value')))"
         );
     }
 
     #[test]
-    fn it_builds_query_with_union() {
+    fn it_builds_criteria_with_union() {
         let query: StreamQuery<PgEventId, TestEvent> =
             query!(TestEvent; bar_id == "value1").union(&query!(TestEvent; foo_id == "value2"));
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
         assert_eq!(
-            sql_builder.build().sql(),
-            "SELECT * FROM event WHERE ((event_type = 'Bar' AND bar_id = $1) OR (event_type = 'Foo')) OR ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = $2))"
+            criteria_builder.build(),
+            "((event_type = 'Bar' AND bar_id = 'value1') OR (event_type = 'Foo')) OR ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value2'))"
         );
     }
 
     #[test]
-    fn it_builds_query_with_excluded_events() {
+    fn it_builds_criteria_with_excluded_events() {
         let query =
             query!(TestEvent; bar_id == "value1").exclude_events(event_types!(TestEvent, [Bar]));
-        let mut sql_builder = QueryBuilder::new(query, "SELECT * FROM event WHERE ");
+        let criteria_builder = CriteriaBuilder::new(&query);
 
-        assert_eq!(
-            sql_builder.build().sql(),
-            r#"SELECT * FROM event WHERE ((event_type = 'Foo'))"#
-        );
+        assert_eq!(criteria_builder.build(), r#"((event_type = 'Foo'))"#);
     }
 }

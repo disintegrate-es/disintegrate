@@ -9,7 +9,7 @@ mod tests;
 
 use futures::stream::BoxStream;
 use insert_builder::InsertBuilder;
-use query_builder::QueryBuilder;
+use query_builder::CriteriaBuilder;
 use sqlx::{PgPool, Row};
 use std::error::Error as StdError;
 
@@ -112,10 +112,9 @@ where
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
         stream! {
-            let mut sql = QueryBuilder::new(query.clone(), "SELECT event_id, payload FROM event WHERE ")
-            .end_with("ORDER BY event_id ASC");
+            let sql = format!("SELECT sequence, payload FROM event WHERE {} ORDER BY sequence ASC", CriteriaBuilder::new(query).build());
 
-            for await row in sql.build()
+            for await row in sqlx::query(&sql)
             .fetch(&self.pool) {
                 let row = row?;
                 let id = row.get(0);
@@ -175,17 +174,13 @@ where
             .collect::<Vec<_>>()
             .join(",");
         let mut tx = self.pool.begin().await?;
-        let mut consume_sql = QueryBuilder::new(
-            query.change_origin(version),
-            format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{persisted_event_ids}}}'))
-                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({persisted_event_ids}) 
-                       OR ((consumed = 0 OR committed = true) 
-                       AND (event_id <= {last_event_id} AND ("#).as_str(),
-        )
-        .end_with("))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id");
-
-        consume_sql
-            .build()
+        sqlx::query(&format!(
+            r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{persisted_event_ids}}}'))
+                       FROM (SELECT es.event_id FROM event_sequence es LEFT JOIN event e ON es.event_id = e.event_id WHERE es.event_id IN ({persisted_event_ids}) 
+                       OR ((es.consumed = 0 OR e.sequence > {version})
+                       AND (es.event_id <= {last_event_id} AND ({}))) ORDER BY es.event_id FOR UPDATE OF es) upd WHERE es.event_id = upd.event_id"#,
+            CriteriaBuilder::new(&query).alias("es").build()
+        ))
             .execute(&mut *tx)
             .await
             .map_err(map_update_event_id_err)?;
