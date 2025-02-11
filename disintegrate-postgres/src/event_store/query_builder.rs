@@ -1,6 +1,7 @@
 use crate::PgEventId;
 use disintegrate::Event;
 use disintegrate::StreamQuery;
+use std::fmt::Write;
 
 /// SQL Query Builder
 ///
@@ -28,9 +29,9 @@ where
     pub fn new(query: &'a StreamQuery<PgEventId, QE>) -> Self {
         Self {
             query,
-            builder: String::new(),
+            builder: String::with_capacity(512),
             alias: None,
-            from_beginning: false
+            from_beginning: false,
         }
     }
 
@@ -52,31 +53,42 @@ where
             .unwrap_or_default();
         let mut filters = self.query.filters().iter().peekable();
         while let Some(filter) = filters.next() {
-            let events: Vec<&str> = if let Some(excluted_event) = filter.excluded_events() {
+            let events: Vec<&str> = if let Some(excluded_events) = filter.excluded_events() {
                 filter
                     .events()
                     .iter()
-                    .filter(|e| !excluted_event.contains(e))
+                    .filter(|e| !excluded_events.contains(e))
                     .cloned()
                     .collect()
             } else {
                 filter.events().to_vec()
             };
             let has_events = !events.is_empty();
-            self.builder.push_str("(");
+
+            // Start filter group
+            self.builder.push('(');
+
+            // Add sequence condition if needed
             if filter.origin() > 0 && !self.from_beginning {
-                self.builder.push_str(&format!("{alias_prefix}sequence > "));
-                self.builder.push_str(&filter.origin().to_string());
+                write!(
+                    self.builder,
+                    "{}sequence > {}",
+                    alias_prefix,
+                    filter.origin()
+                )
+                .unwrap();
+
                 if has_events {
-                    self.builder.push_str(" AND (");
+                    write!(self.builder, " AND (").unwrap();
                 }
             }
 
+            // Process events
             let mut events = events.into_iter().peekable();
             while let Some(event) = events.next() {
-                self.builder.push_str("(");
-                self.builder
-                    .push_str(&format!("{alias_prefix}event_type = '{event}'"));
+                write!(self.builder, "({}event_type = '{}'", alias_prefix, event).unwrap();
+
+                // Process identifiers
                 let event_info = QE::SCHEMA.event_info(event).unwrap();
                 let mut event_identifiers = filter
                     .identifiers()
@@ -84,35 +96,44 @@ where
                     .filter(|(ident, _)| event_info.has_domain_identifier(ident))
                     .peekable();
 
-                event_identifiers
-                    .peek()
-                    .map(|_| self.builder.push_str(" AND "));
+                if event_identifiers.peek().is_some() {
+                    write!(self.builder, " AND ").unwrap();
+                }
 
                 while let Some((ident, value)) = event_identifiers.next() {
-                    self.builder.push_str(&format!("{alias_prefix}{ident} = "));
+                    write!(self.builder, "{}{} = ", alias_prefix, ident).unwrap();
                     match value {
                         disintegrate::IdentifierValue::String(value) => {
-                            self.builder.push_str(&format!("'{}'", value.clone()));
+                            write!(self.builder, "'{}'", value).unwrap();
                         }
                         disintegrate::IdentifierValue::i64(value) => {
-                            self.builder.push_str(&value.to_string())
+                            write!(self.builder, "{}", value).unwrap();
                         }
                         disintegrate::IdentifierValue::Uuid(value) => {
-                            self.builder.push_str(&format!("'{}'", value.clone()))
+                            write!(self.builder, "'{}'", value).unwrap();
                         }
                     };
-                    event_identifiers
-                        .peek()
-                        .map(|_| self.builder.push_str(" AND "));
+                    if event_identifiers.peek().is_some() {
+                        write!(self.builder, " AND ").unwrap();
+                    }
                 }
-                self.builder.push_str(")");
-                events.peek().map(|_| self.builder.push_str(" OR "));
+
+                self.builder.push(')');
+                if events.peek().is_some() {
+                    write!(self.builder, " OR ").unwrap();
+                }
             }
+
+            // Close events group if needed
             if filter.origin() > 0 && !self.from_beginning && has_events {
-                self.builder.push_str(")");
+                self.builder.push(')');
             }
-            self.builder.push_str(")");
-            filters.peek().map(|_| self.builder.push_str(" OR "));
+
+            // Close filter group
+            self.builder.push(')');
+            if filters.peek().is_some() {
+                write!(self.builder, " OR ").unwrap();
+            }
         }
 
         self.builder
@@ -207,7 +228,7 @@ mod tests {
 
         assert_eq!(
             criteria_builder.build(),
-            "(event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value')))"
+            "(sequence > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value')))"
         );
     }
 
