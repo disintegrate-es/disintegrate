@@ -32,7 +32,7 @@ where
     E: Event + Clone,
     S: Serde<E> + Send + Sync,
 {
-    executors: Vec<Box<dyn EventListenerExecutor<E>>>,
+    executors: Vec<Box<dyn EventListenerExecutor<E> + Send + Sync>>,
     event_store: PgEventStore<E, S>,
     intialize: bool,
     shutdown_token: CancellationToken,
