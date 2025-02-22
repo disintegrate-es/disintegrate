@@ -1,12 +1,13 @@
-use super::insert_builder::InsertBuilder;
+use super::append::{InsertEventSequenceBuilder, InsertEventsBuilder};
 use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
     domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
-    EventSchema, EventStore, IdentifierType,
+    EventSchema, EventStore, IdentifierType, PersistedEvent,
 };
 use disintegrate_serde::serde::json::Json;
-use disintegrate_serde::{Deserializer, Serializer};
+use disintegrate_serde::Deserializer;
 use futures::StreamExt;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
@@ -265,16 +266,22 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
     assert!(matches!(result, Err(Error::Concurrency)));
 }
 
-pub async fn insert_events<E: Event + Clone + Serialize>(pool: &PgPool, events: &[E]) {
+pub async fn insert_events<E: Event + Clone + Serialize + DeserializeOwned>(
+    pool: &PgPool,
+    events: &[E],
+) {
+    let mut persisted_events = Vec::with_capacity(events.len());
     for event in events {
-        let mut sequence_insert = InsertBuilder::new(event, "event_sequence").returning("event_id");
-        let row = sequence_insert.build().fetch_one(pool).await.unwrap();
-        let payload =
-            disintegrate_serde::serde::json::Json::<E>::default().serialize(event.clone());
-
-        let mut event_insert = InsertBuilder::new(event, "event")
-            .with_id(row.get(0))
-            .with_payload(&payload);
-        event_insert.build().execute(pool).await.unwrap();
+        let mut event_sequence_insert = InsertEventSequenceBuilder::new(event)
+            .with_consumed(true)
+            .with_committed(true);
+        let row = event_sequence_insert.build().fetch_one(pool).await.unwrap();
+        persisted_events.push(PersistedEvent::new(row.get(0), event.clone()));
     }
+    let serde = disintegrate_serde::serde::json::Json::default();
+    InsertEventsBuilder::new(persisted_events.as_slice(), &serde)
+        .build()
+        .execute(pool)
+        .await
+        .unwrap();
 }

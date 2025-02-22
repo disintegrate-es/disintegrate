@@ -1,64 +1,42 @@
-use disintegrate::Event;
+use std::collections::BTreeSet;
+
+use disintegrate::{Event, Identifier, PersistedEvent};
+use disintegrate_serde::Serde;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::Postgres;
 
 use crate::PgEventId;
 
-/// SQL Insert Builder
+/// SQL Insert Event Sequence Builder
 ///
-/// A builder for constructing insert SQL queries.
-pub struct InsertBuilder<'a, E>
+/// A builder for constructing insert SQL queries for the `event_sequence` table.
+pub struct InsertEventSequenceBuilder<'a, E>
 where
     E: Event + Clone,
 {
     builder: sqlx::QueryBuilder<'a, Postgres>,
     event: &'a E,
-    id: Option<PgEventId>,
-    payload: Option<&'a [u8]>,
     consumed: Option<bool>,
-    returning: Option<&'a str>,
+    committed: Option<bool>,
 }
 
-impl<'a, E> InsertBuilder<'a, E>
+impl<'a, E> InsertEventSequenceBuilder<'a, E>
 where
     E: Event + Clone,
 {
-    /// Creates a new instance of `InsertBuilder`.
+    /// Creates a new instance of `InsertEventSequenceBuilder`.
     ///
     /// # Arguments
     ///
     /// * `event` - The event to be inserted.
-    /// * `table` - The table name.
-    pub fn new(event: &'a E, table: &str) -> Self {
+    pub fn new(event: &'a E) -> Self {
         Self {
-            builder: sqlx::QueryBuilder::new(format!("INSERT INTO {table} (")),
+            builder: sqlx::QueryBuilder::new("INSERT INTO event_sequence ("),
             event,
-            id: None,
-            payload: None,
             consumed: None,
-            returning: None,
+            committed: None,
         }
-    }
-
-    /// Sets the ID for the event to be inserted.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the event.
-    pub fn with_id(mut self, id: PgEventId) -> Self {
-        self.id = Some(id);
-        self
-    }
-
-    /// Sets the payload for the event to be inserted.
-    ///
-    /// # Arguments
-    ///
-    /// * `payload` - The payload of the event.
-    pub fn with_payload(mut self, payload: &'a [u8]) -> Self {
-        self.payload = Some(payload);
-        self
     }
 
     /// Sets the consumed flag for the event to be inserted.
@@ -71,13 +49,13 @@ where
         self
     }
 
-    /// Sets the end SQL fragment of the query.
+    /// Sets the committed flag for the event to be inserted.
     ///
     /// # Arguments
     ///
-    /// * `end` - The SQL fragment to be set as the end of the query.
-    pub fn returning(mut self, returning: &'a str) -> Self {
-        self.returning = Some(returning);
+    /// * `committed` - The value for the consumed flag.
+    pub fn with_committed(mut self, committed: bool) -> Self {
+        self.committed = Some(committed);
         self
     }
 
@@ -92,16 +70,12 @@ where
             separated_builder.push(ident);
         }
 
-        if self.id.is_some() {
-            separated_builder.push("event_id");
-        }
-
-        if self.payload.is_some() {
-            separated_builder.push("payload");
-        }
-
         if self.consumed.is_some() {
             separated_builder.push("consumed");
+        }
+
+        if self.committed.is_some() {
+            separated_builder.push("committed");
         }
 
         separated_builder.push_unseparated(") VALUES (");
@@ -118,24 +92,91 @@ where
             };
         }
 
-        if let Some(id) = self.id {
-            separated_builder.push_bind(id);
-        }
-
-        if let Some(payload) = self.payload {
-            separated_builder.push_bind(payload);
-        }
-
         if let Some(consumed) = self.consumed {
             separated_builder.push(if consumed { 1 } else { 0 });
         }
 
-        separated_builder.push_unseparated(")");
-
-        if let Some(returning) = self.returning {
-            separated_builder.push_unseparated(format!(" RETURNING ({returning})"));
+        if let Some(committed) = self.committed {
+            separated_builder.push(committed);
         }
 
+        separated_builder.push_unseparated(") RETURNING (event_id)");
+
+        self.builder.build()
+    }
+}
+
+/// SQL Insert Event Builder
+///
+/// A builder for constructing insert SQL queries for the `event` table.
+pub struct InsertEventsBuilder<'a, E, S>
+where
+    E: Event + Clone,
+    S: Serde<E>,
+{
+    builder: sqlx::QueryBuilder<'a, Postgres>,
+    events: &'a [PersistedEvent<PgEventId, E>],
+    serde: &'a S,
+}
+
+impl<'a, E, S> InsertEventsBuilder<'a, E, S>
+where
+    E: Event + Clone,
+    S: Serde<E>,
+{
+    /// Creates a new instance of `InsertEventBuilder` for batch inserts.
+    ///
+    /// # Arguments
+    ///
+    /// * `events` - The events to be inserted.
+    /// * `serde` - The serialization implementation for the event payload.
+    pub fn new(events: &'a [PersistedEvent<PgEventId, E>], serde: &'a S) -> Self {
+        Self {
+            builder: sqlx::QueryBuilder::new("INSERT INTO event ("),
+            events,
+            serde,
+        }
+    }
+
+    /// Builds the SQL batch insert query.
+    pub fn build(&'a mut self) -> Query<'a, Postgres, PgArguments> {
+        if self.events.is_empty() {
+            panic!("Cannot build an insert query with no events");
+        }
+
+        let mut all_identifiers: BTreeSet<Identifier> = BTreeSet::new();
+        for event in self.events.iter() {
+            all_identifiers.extend(event.domain_identifiers().keys());
+        }
+
+        let mut separated_builder = self.builder.separated(",");
+
+        separated_builder.push("event_id");
+        separated_builder.push("event_type");
+        separated_builder.push("payload");
+        for ident in &all_identifiers {
+            separated_builder.push(ident);
+        }
+
+        separated_builder.push_unseparated(")");
+
+        self.builder.push_values(self.events, |mut b, event| {
+            b.push_bind(event.id());
+            b.push_bind(event.name());
+            b.push_bind(self.serde.serialize(event.clone().into_inner()));
+            let event_identifiers = event.domain_identifiers();
+            for ident in &all_identifiers {
+                if let Some(value) = event_identifiers.get(ident) {
+                    match value {
+                        disintegrate::IdentifierValue::String(value) => b.push_bind(value.clone()),
+                        disintegrate::IdentifierValue::i64(value) => b.push_bind(*value),
+                        disintegrate::IdentifierValue::Uuid(value) => b.push_bind(*value),
+                    };
+                } else {
+                    b.push("NULL");
+                }
+            }
+        });
         self.builder.build()
     }
 }
@@ -219,29 +260,10 @@ mod tests {
             cart_id: "cart_1".into(),
             quantity: 10,
         };
-        let mut insert_query = InsertBuilder::new(&event, "event_sequence");
-
+        let mut insert_query = InsertEventSequenceBuilder::new(&event);
         assert_eq!(
             insert_query.build().sql(),
-            "INSERT INTO event_sequence (event_type,cart_id,product_id) VALUES ($1,$2,$3)"
-        );
-    }
-
-    #[test]
-    fn it_builds_insert_with_id_and_payload() {
-        let event = ShoppingCartEvent::Added {
-            product_id: "product_1".into(),
-            cart_id: "cart_1".into(),
-            quantity: 10,
-        };
-        let payload: Vec<u8> = vec![];
-        let mut insert_query = InsertBuilder::new(&event, "event")
-            .with_id(1)
-            .with_payload(&payload);
-
-        assert_eq!(
-            insert_query.build().sql(),
-            "INSERT INTO event (event_type,cart_id,product_id,event_id,payload) VALUES ($1,$2,$3,$4,$5)"
+            "INSERT INTO event_sequence (event_type,cart_id,product_id) VALUES ($1,$2,$3) RETURNING (event_id)"
         );
     }
 }

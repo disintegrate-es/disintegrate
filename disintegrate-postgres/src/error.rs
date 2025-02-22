@@ -10,6 +10,9 @@ pub enum Error {
     /// An error occurred while deserializing an event payload.
     #[error(transparent)]
     Deserialization(#[from] disintegrate_serde::Error),
+    /// An error occurred while acquiring an append permit.
+    #[error(transparent)]
+    AppendPermit(#[from] tokio::sync::AcquireError),
     /// An error occurred while mapping the event store event to the query event
     #[error("unable to map the event store event to the query event: {0}")]
     QueryEventMapping(#[source] Box<dyn StdError + 'static + Send + Sync>),

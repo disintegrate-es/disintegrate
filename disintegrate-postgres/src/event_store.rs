@@ -2,16 +2,18 @@
 //!
 //! This module provides an implementation of the `EventStore` trait using PostgreSQL as the underlying storage.
 //! It allows storing and retrieving events from a PostgreSQL database.
-mod insert_builder;
-mod query_builder;
+mod append;
+mod query;
 #[cfg(test)]
 mod tests;
 
+use append::{InsertEventSequenceBuilder, InsertEventsBuilder};
 use futures::stream::BoxStream;
-use insert_builder::InsertBuilder;
-use query_builder::QueryBuilder;
+use query::CriteriaBuilder;
 use sqlx::{PgPool, Row};
 use std::error::Error as StdError;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 use std::marker::PhantomData;
 
@@ -32,6 +34,7 @@ where
     S: Serde<E> + Send + Sync,
 {
     pub(crate) pool: PgPool,
+    concurrent_appends: Arc<tokio::sync::Semaphore>,
     serde: S,
     event_type: PhantomData<E>,
 }
@@ -67,11 +70,45 @@ where
     /// * `pool` - The PostgreSQL connection pool.
     /// * `serde` - The serialization implementation for the event payload.
     pub fn new_uninitialized(pool: PgPool, serde: S) -> Self {
+        const MAX_APPENDS_CONNECTIONS_PERCENT: f64 = 0.5;
+        let concurrent_appends = Arc::new(Semaphore::new(
+            (pool.options().get_max_connections() as f64 * MAX_APPENDS_CONNECTIONS_PERCENT).ceil()
+                as usize,
+        ));
         Self {
             pool,
+            concurrent_appends,
             serde,
             event_type: PhantomData,
         }
+    }
+
+    /// Limits the maximum number of concurrent appends based on the PostgreSQL connection pool.
+    ///
+    /// By default, `PgEventStore` allows up to 50% of the available database connections
+    /// to be used for concurrent appends. This method allows adjusting that limit.
+    ///
+    /// The number of concurrent appends is determined by multiplying the total maximum
+    /// connections of the `PgPool` by the specified `percentage`.
+    ///
+    /// # Arguments
+    ///
+    /// * `percentage` - A floating-point number (0.0 to 1.0) representing the
+    ///   proportion of the total database connections allocated for concurrent appends.
+    ///
+    /// # Returns
+    ///
+    /// Returns a modified `PgEventStore` instance with the updated append concurrency limit.
+    pub fn with_max_appends_connections_percent(mut self, percentage: f64) -> Self {
+        assert!(
+            (0.0..=1.0).contains(&percentage),
+            "percentage must be between 0 and 1"
+        );
+
+        self.concurrent_appends = Arc::new(Semaphore::new(
+            (self.pool.options().get_max_connections() as f64 * percentage).ceil() as usize,
+        ));
+        self
     }
 }
 
@@ -112,10 +149,10 @@ where
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
         stream! {
-            let mut sql = QueryBuilder::new(query.clone(), "SELECT event_id, payload FROM event WHERE ")
-            .end_with("ORDER BY event_id ASC");
+            let epoch: i64 = sqlx::query_scalar("SELECT event_store_current_epoch()").fetch_one(&self.pool).await?;
+            let sql = format!("SELECT event_id, payload FROM event WHERE event_id <= {epoch} AND ({}) ORDER BY event_id ASC", CriteriaBuilder::new(query).build());
 
-            for await row in sql.build()
+            for await row in sqlx::query(&sql)
             .fetch(&self.pool) {
                 let row = row?;
                 let id = row.get(0);
@@ -158,45 +195,42 @@ where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
+        let _permit = self.concurrent_appends.acquire().await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT event_store_begin_epoch()")
+            .execute(&mut *tx)
+            .await?;
         let mut persisted_events = Vec::with_capacity(events.len());
         let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         for event in events {
-            let mut sequence_insert =
-                InsertBuilder::new(&event, "event_sequence").returning("event_id");
-            let row = sequence_insert.build().fetch_one(&self.pool).await?;
+            let mut staged_event_insert = InsertEventSequenceBuilder::new(&event);
+            let row = staged_event_insert.build().fetch_one(&self.pool).await?;
             persisted_events_ids.push(row.get(0));
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
-        let last_event_id = persisted_events_ids.last().copied().unwrap_or(version);
-        let persisted_event_ids = persisted_events_ids
+        let Some(last_event_id) = persisted_events_ids.last().copied() else {
+            return Ok(vec![]);
+        };
+        let joined_event_ids = persisted_events_ids
             .iter()
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        let mut tx = self.pool.begin().await?;
-        let mut consume_sql = QueryBuilder::new(
-            query.change_origin(version),
-            format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{persisted_event_ids}}}'))
-                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({persisted_event_ids}) 
+        sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{joined_event_ids}}}'))
+                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({joined_event_ids}) 
                        OR ((consumed = 0 OR committed = true) 
-                       AND (event_id <= {last_event_id} AND ("#).as_str(),
-        )
-        .end_with("))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id");
-
-        consume_sql
-            .build()
+                       AND (event_id <= {last_event_id} AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
+                    CriteriaBuilder::new(&query.change_origin(version)).build()))
             .execute(&mut *tx)
             .await
             .map_err(map_update_event_id_err)?;
 
-        for event in &persisted_events {
-            let payload = self.serde.serialize((**event).clone());
-            let mut event_insert = InsertBuilder::new(&**event, "event")
-                .with_id(event.id())
-                .with_payload(&payload);
-            event_insert.build().execute(&mut *tx).await?;
-        }
+        InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
+            .build()
+            .execute(&self.pool)
+            .await?;
+
         tx.commit().await?;
 
         Ok(persisted_events)
@@ -223,28 +257,18 @@ where
         let mut persisted_events = Vec::with_capacity(events.len());
         let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         for event in events {
-            let mut sequence_insert = InsertBuilder::new(&event, "event_sequence")
+            let mut sequence_insert = InsertEventSequenceBuilder::new(&event)
                 .with_consumed(true)
-                .returning("event_id");
+                .with_committed(true);
             let row = sequence_insert.build().fetch_one(&self.pool).await?;
             persisted_events_ids.push(row.get(0));
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
-        let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE event_sequence SET committed = true WHERE event_id = ANY($1)")
-            .bind(persisted_events_ids)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_update_event_id_err)?;
-        for event in &persisted_events {
-            let payload = self.serde.serialize((**event).clone());
-            let mut event_insert = InsertBuilder::new(&**event, "event")
-                .with_id(event.id())
-                .with_payload(&payload);
-            event_insert.build().execute(&mut *tx).await?;
-        }
-        tx.commit().await?;
+        InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
+            .build()
+            .execute(&self.pool)
+            .await?;
 
         Ok(persisted_events)
     }
@@ -267,6 +291,16 @@ pub async fn setup<E: Event>(pool: &PgPool) -> Result<(), Error> {
         .await?;
     sqlx::query(include_str!(
         "event_store/sql/idx_event_sequence_committed.sql"
+    ))
+    .execute(pool)
+    .await?;
+    sqlx::query(include_str!(
+        "event_store/sql/fn_event_store_current_epoch.sql"
+    ))
+    .execute(pool)
+    .await?;
+    sqlx::query(include_str!(
+        "event_store/sql/fn_event_store_begin_epoch.sql"
     ))
     .execute(pool)
     .await?;
