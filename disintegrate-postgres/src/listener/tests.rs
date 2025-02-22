@@ -205,7 +205,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
             PgEventListenerConfig::poller(Duration::from_millis(10)),
         )
         .start_with_shutdown(async {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(400)).await;
         })
         .await
         .unwrap();
@@ -249,7 +249,7 @@ async fn it_runs_event_listener_with_db_listener(pool: PgPool) {
             PgEventListenerConfig::poller(Duration::from_millis(5000)).with_notifier(),
         )
         .start_with_shutdown(async {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(400)).await;
         })
         .await
         .unwrap();
