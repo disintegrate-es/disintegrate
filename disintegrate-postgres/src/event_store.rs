@@ -195,13 +195,13 @@ where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
+        let mut persisted_events = Vec::with_capacity(events.len());
+        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         let _permit = self.concurrent_appends.acquire().await?;
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT event_store_begin_epoch()")
             .execute(&mut *tx)
             .await?;
-        let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
         for event in events {
             let mut staged_event_insert = InsertEventSequenceBuilder::new(&event);
             let row = staged_event_insert.build().fetch_one(&self.pool).await?;
@@ -212,16 +212,13 @@ where
         let Some(last_event_id) = persisted_events_ids.last().copied() else {
             return Ok(vec![]);
         };
-        let joined_event_ids = persisted_events_ids
-            .iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY('{{{joined_event_ids}}}'))
-                       FROM (SELECT event_id FROM event_sequence WHERE event_id IN ({joined_event_ids}) 
+        sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY($1))
+                       FROM (SELECT event_id FROM event_sequence WHERE event_id = ANY($1) 
                        OR ((consumed = 0 OR committed = true) 
-                       AND (event_id <= {last_event_id} AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
+                       AND (event_id <= $2 AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
                     CriteriaBuilder::new(&query.change_origin(version)).build()))
+            .bind(persisted_events_ids)
+            .bind(last_event_id)
             .execute(&mut *tx)
             .await
             .map_err(map_update_event_id_err)?;
@@ -256,19 +253,30 @@ where
     {
         let mut persisted_events = Vec::with_capacity(events.len());
         let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
+        let _permit = self.concurrent_appends.acquire().await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT event_store_begin_epoch()")
+            .execute(&mut *tx)
+            .await?;
         for event in events {
-            let mut sequence_insert = InsertEventSequenceBuilder::new(&event)
-                .with_consumed(true)
-                .with_committed(true);
+            let mut sequence_insert = InsertEventSequenceBuilder::new(&event).with_consumed(true);
             let row = sequence_insert.build().fetch_one(&self.pool).await?;
             persisted_events_ids.push(row.get(0));
             persisted_events.push(PersistedEvent::new(row.get(0), event));
         }
 
+        sqlx::query("UPDATE event_sequence es SET committed = true WHERE event_id = ANY($1)")
+            .bind(persisted_events_ids)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_update_event_id_err)?;
+
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+
+        tx.commit().await?;
 
         Ok(persisted_events)
     }
