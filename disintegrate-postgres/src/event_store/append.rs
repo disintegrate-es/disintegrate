@@ -54,6 +54,7 @@ where
     /// # Arguments
     ///
     /// * `committed` - The value for the consumed flag.
+    #[cfg(test)]
     pub fn with_committed(mut self, committed: bool) -> Self {
         self.committed = Some(committed);
         self
