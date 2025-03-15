@@ -2,6 +2,10 @@
 pub mod avro;
 #[cfg(feature = "json")]
 pub mod json;
+
+#[cfg(feature = "messagepack")]
+pub mod messagepack;
+
 #[cfg(feature = "prost")]
 pub mod prost;
 #[cfg(feature = "protobuf")]
