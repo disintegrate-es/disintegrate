@@ -30,10 +30,7 @@ where
     /// # Returns
     ///
     /// Serialized bytes representing the value in MessagePack format.
-    fn serialize(
-        &self,
-        value: T,
-    ) -> Vec<u8> {
+    fn serialize(&self, value: T) -> Vec<u8> {
         rmp_serde::to_vec(&value).expect("MessagePack serialization failed")
     }
 }
@@ -51,10 +48,7 @@ where
     /// # Returns
     ///
     /// A `Result` containing the deserialized value on success, or an error on failure.
-    fn deserialize(
-        &self,
-        data: Vec<u8>,
-    ) -> Result<T, Error> {
+    fn deserialize(&self, data: Vec<u8>) -> Result<T, Error> {
         rmp_serde::from_slice(&data).map_err(|e| Error::Deserialization(Box::new(e)))
     }
 }
