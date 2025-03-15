@@ -11,8 +11,9 @@ license.workspace = true
 [features]
 macros = ["disintegrate-macros"]
 serde = ["disintegrate-serde"]
-serde-json = ["serde", "disintegrate-serde/json"]
 serde-avro = ["serde", "disintegrate-serde/avro"]
+serde-json = ["serde", "disintegrate-serde/json"]
+serde-messagepack = ["serde", "disintegrate-serde/messagepack"]
 serde-prost = ["serde", "disintegrate-serde/prost"]
 serde-protobuf = ["serde", "disintegrate-serde/protobuf"]
 

@@ -52,6 +52,9 @@ pub mod serde {
     #[cfg(feature = "serde-json")]
     #[doc(inline)]
     pub use disintegrate_serde::serde::json;
+    #[cfg(feature = "serde-messagepack")]
+    #[doc(inline)]
+    pub use disintegrate_serde::serde::messagepack;
     #[cfg(feature = "serde-prost")]
     #[doc(inline)]
     pub use disintegrate_serde::serde::prost;
