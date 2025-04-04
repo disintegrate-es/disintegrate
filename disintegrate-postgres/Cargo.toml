@@ -19,7 +19,7 @@ disintegrate-macros = { version = "2.0.0", path = "../disintegrate-macros" }
 serde = "1.0.217"
 serde_json = "1.0.138"
 sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio-rustls", "uuid"] }
-async-trait = "0.1.80"
+async-trait = "0.1.88"
 futures = "0.3.30"
 async-stream = "0.3.5"
 thiserror = "2.0.11"
