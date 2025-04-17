@@ -107,7 +107,7 @@ where
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```no_run
     ///
     ///     #[test]
     ///     fn test_with_custom_assertions() {
@@ -138,7 +138,6 @@ where
     /// * This method is tracked by the Rust caller location system, so error messages will point to the correct line in your test.
     /// * Use `then()` for straightforward equality assertions
     /// * For asserting errors rather than events, use `then_err()` instead.
-
     #[track_caller]
     pub fn then_assert(self, assertion: impl FnOnce(&Vec<R>)) {
         assertion(&self._step.result.unwrap());
