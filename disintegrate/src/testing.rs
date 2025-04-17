@@ -95,6 +95,55 @@ where
         assert_eq!(Ok(expected.into()), self._step.result);
     }
 
+    /// Allows for custom assertions on the resulting events from a decision execution.
+    ///
+    /// The `then_assert` method enables more complex verification logic beyond simple equality checks.
+    /// This is particularly useful when you need to perform detailed validation of event properties or
+    /// when the exact sequence or content of events requires custom validation logic.
+    ///
+    /// # Parameters
+    ///
+    /// * `assertion` - A closure that receives a reference to the vector of resulting events and performs custom assertions on them.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///
+    ///     #[test]
+    ///     fn test_with_custom_assertions() {
+    ///         disintegrate::TestHarness::given([
+    ///             DomainEvent::AccountOpened { account_id: 1 },
+    ///             DomainEvent::AmountDeposited {
+    ///                 account_id: 1,
+    ///                 amount: 10,
+    ///             },
+    ///         ])
+    ///         .when(WithdrawAmount::new(1, 10))
+    ///         .then_assert(|events| {
+    ///             // Complex assertions can be implemented here
+    ///             assert_eq!(events.len(), 1, "Expected exactly one event");
+    ///             if let DomainEvent::AmountWithdrawn { account_id, amount } = &events[0] {
+    ///                 assert_eq!(*account_id, 1);
+    ///                 assert_eq!(*amount, 10);
+    ///                 // Additional validation like checking timestamps, etc.
+    ///             } else {
+    ///                 panic!("Expected AmountWithdrawn event failed");
+    ///             }
+    ///         });
+    ///     }
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// * This method is tracked by the Rust caller location system, so error messages will point to the correct line in your test.
+    /// * Use `then()` for straightforward equality assertions
+    /// * For asserting errors rather than events, use `then_err()` instead.
+
+    #[track_caller]
+    pub fn then_assert(self, assertion: impl FnOnce(&Vec<R>)) {
+        assertion(&self._step.result.unwrap());
+    }
+
     /// Makes assertions about the expected error result.
     ///
     /// # Arguments
