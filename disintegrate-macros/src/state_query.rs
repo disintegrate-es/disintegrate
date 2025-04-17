@@ -86,7 +86,7 @@ fn impl_struct(ast: &DeriveInput, data: &DataStruct) -> syn::Result<TokenStream>
             let StateQueryOptionalArgs::Rename(rename) = attrs;
             rename.value()
         })
-        .last()
+        .next_back()
         .unwrap_or_else(|| state_query_ident.to_string());
 
     let identifiers_fields: Vec<_> = data

@@ -221,7 +221,7 @@ where
             .bind(last_event_id)
             .execute(&mut *tx)
             .await
-            .map_err(map_update_event_id_err)?;
+            .map_err(map_concurrency_err)?;
 
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
@@ -269,7 +269,7 @@ where
             .bind(persisted_events_ids)
             .execute(&mut *tx)
             .await
-            .map_err(map_update_event_id_err)?;
+            .map_err(map_concurrency_err)?;
 
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
@@ -323,8 +323,7 @@ pub async fn setup<E: Event>(pool: &PgPool) -> Result<(), Error> {
     Ok(())
 }
 
-/// Maps the `sqlx::Error` to `Error::UpdateEventIdError`.
-fn map_update_event_id_err(err: sqlx::Error) -> Error {
+fn map_concurrency_err(err: sqlx::Error) -> Error {
     if let sqlx::Error::Database(ref description) = err {
         if description.code().as_deref() == Some("23514") {
             return Error::Concurrency;

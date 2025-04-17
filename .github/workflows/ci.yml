@@ -4,7 +4,9 @@ on:
   push:
     paths-ignore:
       - 'docs/**'
-
+    pull_request:
+      paths-ignore:
+        - 'docs/**'
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
