@@ -49,14 +49,14 @@ impl ReadModelProjection {
         .execute(&pool)
         .await?;
         Ok(Self {
-            query: query(None),
+            query: query!(DomainEvent),
             pool,
         })
     }
 }
 
 #[async_trait]
-impl EventListener<DomainEvent> for ReadModelProjection {
+impl EventListener<i64, DomainEvent> for ReadModelProjection {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "courses"
@@ -66,7 +66,7 @@ impl EventListener<DomainEvent> for ReadModelProjection {
         &self.query
     }
 
-    async fn handle(&self, event: PersistedEvent<DomainEvent>) -> Result<(), Self::Error> {
+    async fn handle(&self, event: PersistedEvent<i64, DomainEvent>) -> Result<(), Self::Error> {
         let event_id = event.id();
         match event.into_inner() {
             DomainEvent::CourseCreated {
@@ -144,3 +144,37 @@ update table event_listener set last_processed_event_id = 0 where id = 'my-read-
 Reprojection processes can sometimes be sluggish, taking hours or even days to rebuild the read model from events. To understand the intricacies and potential challenges of reprojection, we recommend watching Dennis Doomen's talk, [Slow Event Sourcing reprojections? Just make them faster!](https://www.youtube.com/watch?v=EqVPqInQ6YM).
 
 When reprojecting takes a significant amount of time, employing techniques to prevent outages becomes important. One such technique involves constructing a new read model concurrently and then transitioning the code to query the new read model once the reprojection is complete. This ensures uninterrupted service, allowing the application to continue serving the old projection until the new one is ready.
+
+
+:::tip
+To run your `PgEventListener` as a **background task** that does **not block** your Actix-web routes, you should spawn it in a separate asynchronous task using `tokio::spawn` or `actix_web::rt::spawn` since Actix uses Tokio under the hood.
+This lets your server and HTTP handlers start **immediately**, while the event listener runs in the background and continues until the shutdown signal.
+
+:::
+
+```rust
+// example for actix-web
+    let listener_event_store = event_store.clone();
+    let listener_pool = shared_pool.clone();
+
+    tokio::spawn(async move {
+        let listener = match ReadModelProjection::new(listener_pool).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                error!("Failed to create ReadModelProjection: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = PgEventListener::builder(listener_event_store)
+            .register_listener(
+                listener,
+                PgEventListenerConfig::poller(Duration::from_millis(5000)).with_notifier(),
+            )
+            .start_with_shutdown(shutdown())
+            .await
+        {
+            error!("event listener exited with error: {}", e);
+        }
+    });
+```

@@ -537,4 +537,27 @@ mod test {
         .when(SendMoney::new(1, 2, 8))
         .then_err(Error::InsufficientBalance);
     }
+
+    #[test]
+    fn test_with_custom_assertions() {
+        disintegrate::TestHarness::given([
+            DomainEvent::AccountOpened { account_id: 1 },
+            DomainEvent::AmountDeposited {
+                account_id: 1,
+                amount: 10,
+            },
+        ])
+        .when(WithdrawAmount::new(1, 10))
+        .then_assert(|events| {
+            // Complex assertions can be implemented here
+            assert_eq!(events.len(), 1, "Expected exactly one event");
+            if let DomainEvent::AmountWithdrawn { account_id, amount } = &events[0] {
+                assert_eq!(*account_id, 1);
+                assert_eq!(*amount, 10);
+                // Additional validation like checking timestamps, etc.
+            } else {
+                panic!("Expected AmountWithdrawn event failed");
+            }
+        });
+    }
 }
