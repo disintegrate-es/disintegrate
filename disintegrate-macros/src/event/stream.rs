@@ -54,11 +54,7 @@ pub fn streams(ast: &DeriveInput) -> Result<Vec<DeriveInput>> {
             stream_data.variants = event_data
                 .variants
                 .iter()
-                .filter(|variant| {
-                    selected_variants
-                        .iter()
-                        .any(|selected| variant.ident == *selected)
-                })
+                .filter(|variant| selected_variants.contains(&variant.ident))
                 .cloned()
                 .collect();
 
