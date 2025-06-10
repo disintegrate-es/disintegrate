@@ -33,7 +33,7 @@ pub struct EventInfo {
 impl EventInfo {
     /// Returns true if the event has the given domain identifier.
     pub fn has_domain_identifier(&self, ident: &Identifier) -> bool {
-        self.domain_identifiers.iter().any(|id| *id == ident)
+        self.domain_identifiers.contains(&ident)
     }
 }
 
