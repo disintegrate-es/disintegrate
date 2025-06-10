@@ -25,7 +25,7 @@ impl Decision for ApplyCoupon {
         todo!()
     }
 
-    fn validation_query(&self) -> Option<StreamQuery<Self::Event>> {
+    fn validation_query<ID: disintegrate::EventId>(&self) -> Option<StreamQuery<ID, Self::Event>> {
         let (cart, coupon) = self.state_query();
         // the validation query is the union of the two state queries used by the decision
         Some(union!(
