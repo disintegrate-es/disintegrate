@@ -684,7 +684,7 @@ dependencies = [
  "tonic-build",
  "tonic-health",
  "tonic-reflection",
- "tower 0.4.13",
+ "tower 0.5.1",
  "tower-http",
  "tracing",
  "tracing-subscriber",
