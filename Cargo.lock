@@ -611,7 +611,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.11",
  "tokio",
- "tonic-build 0.12.3",
+ "tonic-build",
 ]
 
 [[package]]
@@ -688,7 +688,7 @@ dependencies = [
  "thiserror 2.0.11",
  "tokio",
  "tonic",
- "tonic-build 0.13.1",
+ "tonic-build",
  "tonic-health",
  "tonic-reflection",
  "tower",
@@ -3191,20 +3191,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "tonic-build"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "prost-build",
- "prost-types",
- "quote",
- "syn 2.0.87",
 ]
 
 [[package]]
