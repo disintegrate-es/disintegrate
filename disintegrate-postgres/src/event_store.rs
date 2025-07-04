@@ -225,7 +225,7 @@ where
 
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         tx.commit().await?;
