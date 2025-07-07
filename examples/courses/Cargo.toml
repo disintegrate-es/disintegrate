@@ -30,7 +30,7 @@ tonic-health = "0.13.1"
 tonic-reflection = "0.13.1"
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["trace"] }
-prost = { version = "0.13.5" }
+prost = { version = "0.14.1" }
 dotenv = "0.15.0"
 serde = "1.0.217"
 tracing = "0.1.41"
