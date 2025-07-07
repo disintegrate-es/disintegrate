@@ -34,7 +34,7 @@ async-stream = "0.3.5"
 [dev-dependencies]
 assert2 = "0.3.14"
 uuid = { version = "1.16.0", features = ["v4"] }
-tokio = {version = "1.45.1", features = ["macros", "rt-multi-thread"]}
+tokio = {version = "1.46.1", features = ["macros", "rt-multi-thread"]}
 
 [package.metadata.docs.rs]
 all-features = true
