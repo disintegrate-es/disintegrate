@@ -16,7 +16,7 @@ listener = ["dep:tokio-util"]
 disintegrate = { version = "2.1.0", path = "../disintegrate" }
 disintegrate-serde = { version = "2.1.0", path = "../disintegrate-serde" }
 disintegrate-macros = { version = "2.1.0", path = "../disintegrate-macros" }
-serde = "1.0.217"
+serde = "1.0.228"
 serde_json = "1.0.140"
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "uuid"] }
 async-trait = "0.1.88"
