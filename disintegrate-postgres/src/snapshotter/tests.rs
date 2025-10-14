@@ -89,16 +89,19 @@ struct SnapshotRow {
 
 #[sqlx::test]
 async fn it_stores_snapshots(pool: PgPool) {
-    let snapshotter = PgSnapshotter::new(pool.clone(), 0).await.unwrap();
+    let snapshotter = PgSnapshotter::try_new(pool.clone(), 0).await.unwrap();
     let mut state = CartState::new("c1", []).into_state_part();
 
-    state.mutate_part(PersistedEvent::new(
-        1,
-        CartEvent::ItemAdded {
-            cart_id: "c1".to_string(),
-            item_id: "p1".to_string(),
-        },
-    ));
+    state.mutate_part(
+        PersistedEvent::new(
+            1,
+            CartEvent::ItemAdded {
+                cart_id: "c1".to_string(),
+                item_id: "p1".to_string(),
+            },
+        )
+        .into(),
+    );
 
     snapshotter.store_snapshot(&state.clone()).await.unwrap();
 
@@ -123,7 +126,7 @@ async fn it_stores_snapshots(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_loads_snapshots(pool: PgPool) {
-    let snapshotter = PgSnapshotter::new(pool.clone(), 2).await.unwrap();
+    let snapshotter = PgSnapshotter::try_new(pool.clone(), 2).await.unwrap();
     let default_state = CartState::new("c1", []);
     let expected_state = CartState::new("c1", ["p1", "p2"]);
     let query_key = query_key(&default_state.query());

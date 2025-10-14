@@ -136,7 +136,7 @@ impl EventListener<PgEventId, ShoppingCartEvent> for CartEventHandler {
 
 #[sqlx::test]
 async fn it_handles_events(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -177,7 +177,7 @@ async fn it_handles_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_runs_event_listeners(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -221,7 +221,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_runs_event_listener_with_db_listener(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )

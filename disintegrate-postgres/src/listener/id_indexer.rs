@@ -152,15 +152,12 @@ fn sql_builder(
 
 #[cfg(test)]
 mod test {
-    use disintegrate::domain_identifiers;
-    use uuid::Uuid;
-
     use super::sql_builder;
+    use disintegrate::domain_identifiers;
 
     #[test]
     fn it_builds_event_update() {
-        let ids =
-            domain_identifiers! {cart_id: "cart1", product_id: 1, customer_id: Uuid::new_v4()};
+        let ids = domain_identifiers! {cart_id: "cart1", product_id: 1, customer_id: 2};
 
         let builder = sql_builder(1, ids);
 

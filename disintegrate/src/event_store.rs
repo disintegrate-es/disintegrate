@@ -34,11 +34,11 @@ where
     ///
     /// # Returns
     ///
-    /// A `Result` containing a boxed stream of `PersistedEvent` matching the query, or an error.
+    /// A `Result` containing a boxed stream of `StreamItem` matching the query, or an error.
     fn stream<'a, QE>(
         &'a self,
         query: &'a StreamQuery<ID, QE>,
-    ) -> BoxStream<'a, Result<PersistedEvent<ID, QE>, Self::Error>>
+    ) -> BoxStream<'a, Result<StreamItem<ID, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync;
@@ -70,14 +70,14 @@ where
         E: Clone + 'async_trait,
         QE: Event + 'static + Clone + Send + Sync;
 
-    /// Appends a batch of events to the event store **without** verifying if  
-    /// new events have been added since the last read.  
+    /// Appends a batch of events to the event store **without** verifying if
+    /// new events have been added since the last read.
     ///
-    /// This method is useful when you are certain that no other process  
-    /// has modified the event store in a way that would make your logic stale.  
+    /// This method is useful when you are certain that no other process
+    /// has modified the event store in a way that would make your logic stale.
     ///
-    /// If you need to guarantee that no duplicate events are added,  
-    /// use the `append` method instead, providing a query that ensures uniqueness.  
+    /// If you need to guarantee that no duplicate events are added,
+    /// use the `append` method instead, providing a query that ensures uniqueness.
     ///
     /// # Arguments
     ///
@@ -92,4 +92,28 @@ where
     ) -> Result<Vec<PersistedEvent<ID, E>>, Self::Error>
     where
         E: Clone + 'async_trait;
+}
+
+/// An item in the event stream.
+#[derive(Debug, Clone)]
+pub enum StreamItem<ID: EventId, E: Event> {
+    /// An event in the stream.
+    Event(PersistedEvent<ID, E>),
+    /// The end of the stream. The id is the version of the db at the time of the query.
+    End(ID),
+}
+
+impl<ID: EventId, E: Event> StreamItem<ID, E> {
+    pub fn id(&self) -> ID {
+        match self {
+            StreamItem::Event(event) => event.id,
+            StreamItem::End(id) => *id,
+        }
+    }
+}
+
+impl<ID: EventId, E: Event> From<PersistedEvent<ID, E>> for StreamItem<ID, E> {
+    fn from(event: PersistedEvent<ID, E>) -> Self {
+        StreamItem::Event(event)
+    }
 }

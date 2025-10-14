@@ -1,6 +1,7 @@
 use crate::domain::{CourseId, DomainEvent};
 use async_trait::async_trait;
 use disintegrate::{query, EventListener, PersistedEvent, StreamQuery};
+use disintegrate_postgres::PgEventId;
 use sqlx::{FromRow, PgPool};
 
 #[derive(Clone)]
@@ -31,7 +32,7 @@ pub struct Course {
 }
 
 pub struct ReadModelProjection {
-    query: StreamQuery<i64, DomainEvent>,
+    query: StreamQuery<PgEventId, DomainEvent>,
     pool: PgPool,
 }
 
@@ -57,17 +58,20 @@ impl ReadModelProjection {
 }
 
 #[async_trait]
-impl EventListener<i64, DomainEvent> for ReadModelProjection {
+impl EventListener<PgEventId, DomainEvent> for ReadModelProjection {
     type Error = sqlx::Error;
     fn id(&self) -> &'static str {
         "courses"
     }
 
-    fn query(&self) -> &StreamQuery<i64, DomainEvent> {
+    fn query(&self) -> &StreamQuery<PgEventId, DomainEvent> {
         &self.query
     }
 
-    async fn handle(&self, event: PersistedEvent<i64, DomainEvent>) -> Result<(), Self::Error> {
+    async fn handle(
+        &self,
+        event: PersistedEvent<PgEventId, DomainEvent>,
+    ) -> Result<(), Self::Error> {
         let event_id = event.id();
         match event.into_inner() {
             DomainEvent::CourseCreated {

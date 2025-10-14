@@ -79,7 +79,7 @@ impl Event for ShoppingCartEvent {
 
 #[sqlx::test]
 async fn it_queries_events(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -98,12 +98,12 @@ async fn it_queries_events(pool: PgPool) {
     let query = query!(ShoppingCartEvent; product_id == "product_1");
     let result = event_store.stream(&query).collect::<Vec<_>>().await;
 
-    assert_eq!(result.len(), 2);
+    assert_eq!(result.len(), 3);
 }
 
 #[sqlx::test]
 async fn it_appends_events(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -139,7 +139,7 @@ async fn it_appends_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_appends_unchecked(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -196,7 +196,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
     pool: PgPool,
 ) {
     let event_store =
-        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(pool, Json::default())
+        PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(pool, Json::default())
             .await
             .unwrap();
 
@@ -216,7 +216,7 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
 async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_its_events_have_been_changed(
     pool: PgPool,
 ) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -270,14 +270,22 @@ pub async fn insert_events<E: Event + Clone + Serialize + DeserializeOwned>(
     pool: &PgPool,
     events: &[E],
 ) {
-    let mut persisted_events = Vec::with_capacity(events.len());
-    for event in events {
-        let mut event_sequence_insert = InsertEventSequenceBuilder::new(event)
-            .with_consumed(true)
-            .with_committed(true);
-        let row = event_sequence_insert.build().fetch_one(pool).await.unwrap();
-        persisted_events.push(PersistedEvent::new(row.get(0), event.clone()));
-    }
+    let mut event_sequence_insert = InsertEventSequenceBuilder::new(events)
+        .with_consumed(true)
+        .with_committed(true);
+    let event_ids: Vec<PgEventId> = event_sequence_insert
+        .build()
+        .fetch_all(pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| r.get(0))
+        .collect();
+    let persisted_events = event_ids
+        .into_iter()
+        .zip(events.iter())
+        .map(|(id, event)| PersistedEvent::new(id, event.clone()))
+        .collect::<Vec<_>>();
     let serde = disintegrate_serde::serde::json::Json::default();
     InsertEventsBuilder::new(persisted_events.as_slice(), &serde)
         .build()

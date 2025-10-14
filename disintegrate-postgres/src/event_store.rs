@@ -10,19 +10,18 @@ mod tests;
 use append::{InsertEventSequenceBuilder, InsertEventsBuilder};
 use futures::stream::BoxStream;
 use query::CriteriaBuilder;
-use sqlx::{PgPool, Row};
+use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::Row;
 use std::error::Error as StdError;
-use std::sync::Arc;
-use tokio::sync::Semaphore;
 
 use std::marker::PhantomData;
 
 use crate::{Error, PgEventId};
 use async_stream::stream;
 use async_trait::async_trait;
-use disintegrate::StreamQuery;
 use disintegrate::{DomainIdentifierInfo, EventStore};
 use disintegrate::{Event, PersistedEvent};
+use disintegrate::{StreamItem, StreamQuery};
 use disintegrate_serde::Serde;
 
 use futures::StreamExt;
@@ -34,7 +33,7 @@ where
     S: Serde<E> + Send + Sync,
 {
     pub(crate) pool: PgPool,
-    concurrent_appends: Arc<tokio::sync::Semaphore>,
+    sequence_pool: PgPool,
     serde: S,
     event_type: PhantomData<E>,
 }
@@ -50,7 +49,7 @@ where
     ///
     /// * `pool` - The PostgreSQL connection pool.
     /// * `serde` - The serialization implementation for the event payload.
-    pub async fn new(pool: PgPool, serde: S) -> Result<Self, Error> {
+    pub async fn try_new(pool: PgPool, serde: S) -> Result<Self, Error> {
         setup::<E>(&pool).await?;
         Ok(Self::new_uninitialized(pool, serde))
     }
@@ -70,44 +69,39 @@ where
     /// * `pool` - The PostgreSQL connection pool.
     /// * `serde` - The serialization implementation for the event payload.
     pub fn new_uninitialized(pool: PgPool, serde: S) -> Self {
-        const MAX_APPENDS_CONNECTIONS_PERCENT: f64 = 0.5;
-        let concurrent_appends = Arc::new(Semaphore::new(
-            (pool.options().get_max_connections() as f64 * MAX_APPENDS_CONNECTIONS_PERCENT).ceil()
-                as usize,
-        ));
+        let main_connections = pool.options().get_max_connections();
+
+        // Allocate 25% of connections to sequence pool, minimum 2
+        let sequence_connections = std::cmp::max(2, (main_connections as f32 * 0.25).ceil() as u32);
+
+        let sequence_pool = PgPoolOptions::new()
+            .max_connections(sequence_connections)
+            .connect_lazy_with((*pool.connect_options()).clone());
+
         Self {
             pool,
-            concurrent_appends,
+            sequence_pool,
             serde,
             event_type: PhantomData,
         }
     }
 
-    /// Limits the maximum number of concurrent appends based on the PostgreSQL connection pool.
+    /// Configures the maximum number of connections for the sequence pool.
     ///
-    /// By default, `PgEventStore` allows up to 50% of the available database connections
-    /// to be used for concurrent appends. This method allows adjusting that limit.
-    ///
-    /// The number of concurrent appends is determined by multiplying the total maximum
-    /// connections of the `PgPool` by the specified `percentage`.
+    /// By default, `PgEventStore` allocates 25% of the main pool connections
+    /// to the sequence pool. This method allows adjusting that allocation.
     ///
     /// # Arguments
     ///
-    /// * `percentage` - A floating-point number (0.0 to 1.0) representing the
-    ///   proportion of the total database connections allocated for concurrent appends.
+    /// * `connections` - The number of connections to allocate to the sequence pool.
     ///
     /// # Returns
     ///
-    /// Returns a modified `PgEventStore` instance with the updated append concurrency limit.
-    pub fn with_max_appends_connections_percent(mut self, percentage: f64) -> Self {
-        assert!(
-            (0.0..=1.0).contains(&percentage),
-            "percentage must be between 0 and 1"
-        );
-
-        self.concurrent_appends = Arc::new(Semaphore::new(
-            (self.pool.options().get_max_connections() as f64 * percentage).ceil() as usize,
-        ));
+    /// Returns a modified `PgEventStore` instance with the updated sequence pool size.
+    pub fn with_sequence_pool_connections(mut self, connections: u32) -> Self {
+        self.sequence_pool = PgPoolOptions::new()
+            .max_connections(connections.min(self.pool.options().get_max_connections()))
+            .connect_lazy_with((*self.pool.connect_options()).clone());
         self
     }
 }
@@ -143,7 +137,7 @@ where
     fn stream<'a, QE>(
         &'a self,
         query: &'a StreamQuery<PgEventId, QE>,
-    ) -> BoxStream<'a, Result<PersistedEvent<PgEventId, QE>, Self::Error>>
+    ) -> BoxStream<'a, Result<StreamItem<PgEventId, QE>, Self::Error>>
     where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
@@ -158,8 +152,10 @@ where
                 let id = row.get(0);
 
                 let payload = self.serde.deserialize(row.get(1))?;
-                yield Ok(PersistedEvent::new(id, payload.try_into().map_err(|e| Error::QueryEventMapping(Box::new(e)))?));
+                let payload: QE = payload.try_into().map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
+                yield Ok(PersistedEvent::new(id, payload).into());
             }
+            yield Ok(StreamItem::End(epoch))
         }
         .boxed()
     }
@@ -195,34 +191,39 @@ where
         E: Clone + 'async_trait,
         QE: Event + Clone + Send + Sync,
     {
-        let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
-        let _permit = self.concurrent_appends.acquire().await?;
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT event_store_begin_epoch()")
             .execute(&mut *tx)
             .await?;
-        for event in events {
-            let mut staged_event_insert = InsertEventSequenceBuilder::new(&event);
-            let row = staged_event_insert.build().fetch_one(&self.pool).await?;
-            persisted_events_ids.push(row.get(0));
-            persisted_events.push(PersistedEvent::new(row.get(0), event));
-        }
+        let mut sequence_insert = InsertEventSequenceBuilder::new(&events);
+        let event_ids: Vec<PgEventId> = sequence_insert
+            .build()
+            .fetch_all(&self.sequence_pool)
+            .await?
+            .into_iter()
+            .map(|r| r.get(0))
+            .collect();
 
-        let Some(last_event_id) = persisted_events_ids.last().copied() else {
+        let Some(last_event_id) = event_ids.last().copied() else {
             return Ok(vec![]);
         };
+
         sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY($1))
                        FROM (SELECT event_id FROM event_sequence WHERE event_id = ANY($1) 
                        OR ((consumed = 0 OR committed = true) 
                        AND (event_id <= $2 AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
                     CriteriaBuilder::new(&query.change_origin(version)).build()))
-            .bind(persisted_events_ids)
+            .bind(&event_ids)
             .bind(last_event_id)
             .execute(&mut *tx)
             .await
             .map_err(map_concurrency_err)?;
 
+        let persisted_events = event_ids
+            .iter()
+            .zip(events)
+            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
+            .collect::<Vec<_>>();
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
             .execute(&mut *tx)
@@ -251,26 +252,30 @@ where
     where
         E: Clone + 'async_trait,
     {
-        let mut persisted_events = Vec::with_capacity(events.len());
-        let mut persisted_events_ids: Vec<PgEventId> = Vec::with_capacity(events.len());
-        let _permit = self.concurrent_appends.acquire().await?;
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT event_store_begin_epoch()")
             .execute(&mut *tx)
             .await?;
-        for event in events {
-            let mut sequence_insert = InsertEventSequenceBuilder::new(&event).with_consumed(true);
-            let row = sequence_insert.build().fetch_one(&self.pool).await?;
-            persisted_events_ids.push(row.get(0));
-            persisted_events.push(PersistedEvent::new(row.get(0), event));
-        }
+        let mut sequence_insert = InsertEventSequenceBuilder::new(&events).with_consumed(true);
+        let event_ids: Vec<PgEventId> = sequence_insert
+            .build()
+            .fetch_all(&self.sequence_pool)
+            .await?
+            .into_iter()
+            .map(|r| r.get(0))
+            .collect();
 
         sqlx::query("UPDATE event_sequence es SET committed = true WHERE event_id = ANY($1)")
-            .bind(persisted_events_ids)
+            .bind(&event_ids)
             .execute(&mut *tx)
             .await
             .map_err(map_concurrency_err)?;
 
+        let persisted_events = event_ids
+            .iter()
+            .zip(events)
+            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
+            .collect::<Vec<_>>();
         InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
             .build()
             .execute(&mut *tx)

@@ -21,7 +21,7 @@ pub use crate::event::{
     DomainIdentifierInfo, Event, EventId, EventInfo, EventSchema, PersistedEvent,
 };
 #[doc(inline)]
-pub use crate::event_store::EventStore;
+pub use crate::event_store::{EventStore, StreamItem};
 #[doc(inline)]
 pub use crate::identifier::{Identifier, IdentifierType, IdentifierValue, IntoIdentifierValue};
 #[doc(inline)]

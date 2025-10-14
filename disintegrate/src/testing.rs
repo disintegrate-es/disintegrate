@@ -63,7 +63,7 @@ impl<E: Event + Clone> TestHarnessStep<E, Given> {
             .enumerate()
             .map(|(id, event)| PersistedEvent::new((id + 1) as i64, event.clone()))
         {
-            state.mutate_all(event);
+            state.mutate_all(event.into());
         }
         let result = decision.process(&state.into_state());
         TestHarnessStep {
