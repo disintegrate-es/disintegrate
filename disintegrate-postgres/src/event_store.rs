@@ -355,7 +355,7 @@ async fn add_domain_identifier_column(
     .await?;
 
     sqlx::query(&format!(
-        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table} USING HASH ({column_name}) WHERE {column_name} IS NOT NULL"
+        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table} ({column_name}) WHERE {column_name} IS NOT NULL"
     ))
     .execute(pool)
     .await?;
