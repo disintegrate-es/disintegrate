@@ -35,7 +35,7 @@ pub trait MultiState<ID: EventId, E: Event + Clone> {
     /// # Arguments
     ///
     /// * `event` - The event to be applied to mutate the sub-states.
-    fn mutate_all(&mut self, item: StreamItem<ID, E>);
+    fn mutate_all<I: Into<StreamItem<ID, E>>>(&mut self, item: I);
     /// The unified query that represents the union of queries for all sub-states.
     ///
     /// This query can be used to retrieve a stream of events relevant to the entire multi-state
@@ -75,7 +75,8 @@ macro_rules! impl_multi_state {
             <<$last as StateQuery>::Event as TryFrom<E>>::Error:
                 StdError + 'static + Send + Sync,
         {
-            fn mutate_all(&mut self, item: StreamItem<ID, E>) {
+            fn mutate_all<I: Into<StreamItem<ID, E>>>(&mut self, item: I) {
+                let item = item.into();
                 paste! {
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
                     $(
@@ -362,8 +363,8 @@ mod test {
     #[test]
     fn it_mutates_all() {
         let mut state = (Cart::new("c1"), Cart::new("c2")).into_state_part();
-        state.mutate_all(PersistedEvent::new(1, item_added_event("p1", "c1")).into());
-        state.mutate_all(PersistedEvent::new(2, item_added_event("p2", "c2")).into());
+        state.mutate_all(PersistedEvent::new(1, item_added_event("p1", "c1")));
+        state.mutate_all(PersistedEvent::new(2, item_added_event("p2", "c2")));
         let (cart1, cart2) = state;
         assert_eq!(cart1.version, 1);
         assert_eq!(cart1.applied_events, 1);
