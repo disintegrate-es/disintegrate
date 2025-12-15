@@ -360,28 +360,42 @@ where
             .query()
             .clone()
             .change_origin(last_processed_event_id);
-        let mut events_stream = self.event_store.stream(&query).take(self.config.fetch_size);
 
-        while let Some(item) = events_stream.next().await {
-            let item = item.map_err(|_err| PgEventListenerError {
+        let mut stream = self.event_store.stream(&query).take(self.config.fetch_size);
+
+        let started_at = std::time::Instant::now();
+
+        while let Some(item) = stream.next().await {
+            let item = item.map_err(|_| PgEventListenerError {
                 last_processed_event_id,
             })?;
+
             let event_id = item.id();
+
             match item {
                 StreamItem::End(_) => {
                     last_processed_event_id = event_id;
                     break;
                 }
-                StreamItem::Event(event) => match self.event_handler.handle(event).await {
-                    Ok(_) => last_processed_event_id = event_id,
-                    Err(_) => {
-                        return Err(PgEventListenerError {
+                StreamItem::Event(event) => {
+                    self.event_handler
+                        .handle(event)
+                        .await
+                        .map_err(|_| PgEventListenerError {
                             last_processed_event_id,
-                        })
-                    }
-                },
+                        })?;
+
+                    last_processed_event_id = event_id;
+                }
             }
+
+            // Stop if shutdown was requested
             if self.shutdown_token.is_cancelled() {
+                break;
+            }
+
+            // Stop close to the acquire timeout
+            if started_at.elapsed() >= self.config.processing_timeout {
                 break;
             }
         }
