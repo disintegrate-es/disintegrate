@@ -85,7 +85,7 @@ where
         Ok(())
     }
 
-    /// Init `EventListener` database
+    /// Init `PgEventListener` database
     pub async fn init_listener(&self) -> Result<(), Error> {
         sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
             .execute(&self.event_store.pool)
@@ -164,21 +164,28 @@ where
         table: &str,
         column: &str,
     ) -> Result<(), Error> {
-        sqlx::query(&format!(
-            "CREATE INDEX IF NOT EXISTS {index_name}_tmp ON {table} ({column})"
-        ))
-        .execute(&self.event_store.pool)
+        let index_type: String = sqlx::query_scalar(&format!("SELECT am.amname AS index_type FROM pg_class c JOIN pg_am am ON am.oid = c.relam WHERE c.relname = '{index_name}'"))
+        .fetch_one(&self.event_store.pool)
         .await?;
 
-        sqlx::query(&format!("DROP INDEX CONCURRENTLY {index_name}"))
+        if index_type == "hash" {
+            sqlx::query(&format!(
+                "CREATE INDEX IF NOT EXISTS {index_name}_tmp ON {table} ({column})"
+            ))
             .execute(&self.event_store.pool)
             .await?;
 
-        sqlx::query(&format!(
-            "ALTER INDEX {index_name}_new RENAME TO  {index_name}"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
+            sqlx::query(&format!("DROP INDEX CONCURRENTLY {index_name}"))
+                .execute(&self.event_store.pool)
+                .await?;
+
+            sqlx::query(&format!(
+                "ALTER INDEX {index_name}_new RENAME TO  {index_name}"
+            ))
+            .execute(&self.event_store.pool)
+            .await?;
+        }
+
         Ok(())
     }
 }
