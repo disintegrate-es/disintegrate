@@ -163,7 +163,7 @@ where
             separated_builder.push(ident);
         }
 
-        separated_builder.push_unseparated(")");
+        separated_builder.push_unseparated(") ");
 
         self.builder.push_values(self.events, |mut b, event| {
             b.push_bind(event.id());
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn it_builds_insert() {
+    fn it_builds_event_sequence_insert() {
         let events = &[
             ShoppingCartEvent::Added {
                 product_id: "product_1".into(),
@@ -276,6 +276,34 @@ mod tests {
         assert_eq!(
             insert_query.build().sql(),
             "INSERT INTO event_sequence (event_type,cart_id,product_id) VALUES ($1, $2, $3), ($4, $5, $6) RETURNING (event_id)"
+        );
+    }
+
+    #[test]
+    fn it_builds_event_insert() {
+        let events = &[
+            PersistedEvent::new(
+                0,
+                ShoppingCartEvent::Added {
+                    product_id: "product_1".into(),
+                    cart_id: "cart_1".into(),
+                    quantity: 10,
+                },
+            ),
+            PersistedEvent::new(
+                1,
+                ShoppingCartEvent::Removed {
+                    product_id: "product_1".into(),
+                    cart_id: "cart_1".into(),
+                    quantity: 10,
+                },
+            ),
+        ];
+        let serde = disintegrate_serde::serde::json::Json::default();
+        let mut insert_query = InsertEventsBuilder::new(events, &serde);
+        assert_eq!(
+            insert_query.build().sql(),
+            "INSERT INTO event (event_id,event_type,payload,cart_id,product_id) VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)"
         );
     }
 }
