@@ -16,10 +16,10 @@ use std::error::Error as StdError;
 
 use std::marker::PhantomData;
 
-use crate::{Error, PgEventId};
+use crate::{Error, Migrator, PgEventId};
 use async_stream::stream;
 use async_trait::async_trait;
-use disintegrate::{DomainIdentifierInfo, EventStore};
+use disintegrate::EventStore;
 use disintegrate::{Event, PersistedEvent};
 use disintegrate::{StreamItem, StreamQuery};
 use disintegrate_serde::Serde;
@@ -40,8 +40,8 @@ where
 
 impl<E, S> PgEventStore<E, S>
 where
-    S: Serde<E> + Send + Sync,
-    E: Event,
+    S: Serde<E> + Send + Sync + Clone,
+    E: Event + Clone,
 {
     /// Initializes the PostgreSQL DB and returns a new instance of `PgEventStore`.
     ///
@@ -50,8 +50,11 @@ where
     /// * `pool` - The PostgreSQL connection pool.
     /// * `serde` - The serialization implementation for the event payload.
     pub async fn try_new(pool: PgPool, serde: S) -> Result<Self, Error> {
-        setup::<E>(&pool).await?;
-        Ok(Self::new_uninitialized(pool, serde))
+        let event_store = Self::new_uninitialized(pool, serde);
+        Migrator::new(event_store.clone())
+            .init_event_store()
+            .await?;
+        Ok(event_store)
     }
     /// Creates a new instance of `PgEventStore`.
     ///
@@ -287,47 +290,6 @@ where
     }
 }
 
-pub async fn setup<E: Event>(pool: &PgPool) -> Result<(), Error> {
-    const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
-
-    sqlx::query(include_str!("event_store/sql/table_event.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("event_store/sql/table_event_sequence.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("event_store/sql/idx_event_sequence_type.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!(
-        "event_store/sql/idx_event_sequence_committed.sql"
-    ))
-    .execute(pool)
-    .await?;
-    sqlx::query(include_str!(
-        "event_store/sql/fn_event_store_current_epoch.sql"
-    ))
-    .execute(pool)
-    .await?;
-    sqlx::query(include_str!(
-        "event_store/sql/fn_event_store_begin_epoch.sql"
-    ))
-    .execute(pool)
-    .await?;
-
-    for domain_identifier in E::SCHEMA.domain_identifiers {
-        if RESERVED_NAMES.contains(&domain_identifier.ident) {
-            panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.", domain_identifier = domain_identifier.ident);
-        }
-        add_domain_identifier_column(pool, "event", domain_identifier).await?;
-        add_domain_identifier_column(pool, "event_sequence", domain_identifier).await?;
-    }
-    Ok(())
-}
-
 fn map_concurrency_err(err: sqlx::Error) -> Error {
     if let sqlx::Error::Database(ref description) = err {
         if description.code().as_deref() == Some("23514") {
@@ -335,29 +297,4 @@ fn map_concurrency_err(err: sqlx::Error) -> Error {
         }
     }
     Error::Database(err)
-}
-
-async fn add_domain_identifier_column(
-    pool: &PgPool,
-    table: &str,
-    domain_identifier: &DomainIdentifierInfo,
-) -> Result<(), Error> {
-    let column_name = domain_identifier.ident;
-    let sql_type = match domain_identifier.type_info {
-        disintegrate::IdentifierType::String => "TEXT",
-        disintegrate::IdentifierType::i64 => "BIGINT",
-        disintegrate::IdentifierType::Uuid => "UUID",
-    };
-    sqlx::query(&format!(
-        "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
-    ))
-    .execute(pool)
-    .await?;
-
-    sqlx::query(&format!(
-        "CREATE INDEX IF NOT EXISTS idx_{table}_{column_name} ON {table} ({column_name}) WHERE {column_name} IS NOT NULL"
-    ))
-    .execute(pool)
-    .await?;
-    Ok(())
 }

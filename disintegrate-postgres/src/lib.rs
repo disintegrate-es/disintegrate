@@ -3,6 +3,7 @@ mod error;
 mod event_store;
 #[cfg(feature = "listener")]
 mod listener;
+mod migrator;
 mod snapshotter;
 
 pub use crate::event_store::PgEventStore;
@@ -15,6 +16,7 @@ pub use crate::snapshotter::PgSnapshotter;
 use disintegrate::{DecisionMaker, Event, EventSourcedStateStore, SnapshotConfig, WithSnapshot};
 use disintegrate_serde::Serde;
 pub use error::Error;
+pub use migrator::Migrator;
 
 pub type PgEventId = i64;
 

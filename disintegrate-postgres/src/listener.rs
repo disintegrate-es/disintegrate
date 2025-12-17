@@ -9,13 +9,13 @@ mod tests;
 
 pub(crate) mod id_indexer;
 
-use crate::{Error, PgEventId};
+use crate::{Error, Migrator, PgEventId};
 use async_trait::async_trait;
 use disintegrate::{Event, EventListener, EventStore, StreamItem, StreamQuery};
 use disintegrate_serde::Serde;
 use futures::future::join_all;
 use futures::{try_join, Future, StreamExt};
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use std::error::Error as StdError;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -112,7 +112,9 @@ where
     /// A `Result` indicating the success or failure of the listener process.
     pub async fn start(self) -> Result<(), Error> {
         if self.intialize {
-            setup(&self.event_store.pool).await?;
+            Migrator::new(self.event_store.clone())
+                .init_listener()
+                .await?;
         }
         let mut handles = vec![];
         let mut wakers = vec![];
@@ -501,22 +503,4 @@ impl<E: Event + Clone> ExecutorWaker<E> {
             self.wake_tx.send_replace(true);
         }
     }
-}
-
-async fn setup(pool: &PgPool) -> Result<(), Error> {
-    sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/add_column_processing_until.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/fn_notify_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!(
-        "listener/sql/trigger_notify_event_listener.sql"
-    ))
-    .execute(pool)
-    .await?;
-    Ok(())
 }
