@@ -114,6 +114,7 @@ where
 
         self.migrate_hash_index_to_btree("idx_events_type", "event", "event_type")
             .await?;
+
         for domain_identifier in E::SCHEMA.domain_identifiers {
             let column_name = domain_identifier.ident;
 
@@ -164,11 +165,11 @@ where
         table: &str,
         column: &str,
     ) -> Result<(), Error> {
-        let index_type: String = sqlx::query_scalar(&format!("SELECT am.amname AS index_type FROM pg_class c JOIN pg_am am ON am.oid = c.relam WHERE c.relname = '{index_name}'"))
-        .fetch_one(&self.event_store.pool)
+        let index_type: Option<String> = sqlx::query_scalar(&format!("SELECT am.amname AS index_type FROM pg_class c JOIN pg_am am ON am.oid = c.relam WHERE c.relname = '{index_name}'"))
+        .fetch_optional(&self.event_store.pool)
         .await?;
 
-        if index_type == "hash" {
+        if index_type.is_some_and(|ty| ty == "hash") {
             sqlx::query(&format!(
                 "CREATE INDEX IF NOT EXISTS {index_name}_tmp ON {table} ({column})"
             ))
@@ -180,7 +181,7 @@ where
                 .await?;
 
             sqlx::query(&format!(
-                "ALTER INDEX {index_name}_new RENAME TO  {index_name}"
+                "ALTER INDEX {index_name}_tmp RENAME TO  {index_name}"
             ))
             .execute(&self.event_store.pool)
             .await?;
