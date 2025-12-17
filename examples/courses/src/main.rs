@@ -71,7 +71,7 @@ async fn grpc_server(app: Application) -> Result<()> {
 async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<()> {
     PgEventListener::builder(event_store)
         .register_listener(
-            read_model::ReadModelProjection::new(pool).await?,
+            read_model::ReadModelProjection::try_new(pool).await?,
             PgEventListenerConfig::poller(Duration::from_secs(5)).with_notifier(),
         )
         .start_with_shutdown(shutdown())

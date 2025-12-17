@@ -37,7 +37,7 @@ pub struct ReadModelProjection {
 }
 
 impl ReadModelProjection {
-    pub async fn new(pool: PgPool) -> Result<Self, sqlx::Error> {
+    pub async fn try_new(pool: PgPool) -> Result<Self, sqlx::Error> {
         sqlx::query(
             r#"
         CREATE TABLE IF NOT EXISTS course (
