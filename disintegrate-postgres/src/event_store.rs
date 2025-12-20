@@ -109,6 +109,66 @@ where
     }
 }
 
+impl<E, S> PgEventStore<E, S>
+where
+    S: Serde<E> + Send + Sync,
+    E: Event + Send + Sync,
+{
+
+    /// Streams events based on the provided query and executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `executor` - The sqlx executor to use for database operations.
+    /// * `query` - The stream query specifying the criteria for filtering events.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boxed stream of `PersistedEvent` that matches the query criteria,
+    /// or an error of type `Error`.
+    pub(crate) fn stream_with<'a, QE, EX>(
+        &'a self,
+        executor: &'a mut EX,
+        query: &'a StreamQuery<PgEventId, QE>,
+    ) -> BoxStream<'a, Result<StreamItem<PgEventId, QE>, Error>>
+    where
+        for<'e> &'e mut EX: sqlx::Executor<'e, Database = sqlx::Postgres>,
+        QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
+        <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
+    {
+        stream! {
+            let epoch: i64 = sqlx::query_scalar(
+                "SELECT event_store_current_epoch()"
+            )
+            .fetch_one(&mut *executor)
+            .await?;
+
+            let sql = format!(
+                "SELECT event_id, payload
+             FROM event
+             WHERE event_id <= {epoch} AND ({})
+             ORDER BY event_id ASC",
+                CriteriaBuilder::new(query).build()
+            );
+
+            for await row in sqlx::query(&sql).fetch(&mut *executor) {
+                let row = row?;
+                let id = row.get(0);
+
+                let payload = self.serde.deserialize(row.get(1))?;
+                let payload: QE = payload
+                    .try_into()
+                    .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
+
+                yield Ok(PersistedEvent::new(id, payload).into());
+            }
+
+            yield Ok(StreamItem::End(epoch))
+        }
+        .boxed()
+    }
+}
+
 /// Implementation of the event store using PostgreSQL.
 ///
 /// This module provides the implementation of the `EventStore` trait for `PgEventStore`,
@@ -145,22 +205,13 @@ where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
-        stream! {
-            let epoch: i64 = sqlx::query_scalar("SELECT event_store_current_epoch()").fetch_one(&self.pool).await?;
-            let sql = format!("SELECT event_id, payload FROM event WHERE event_id <= {epoch} AND ({}) ORDER BY event_id ASC", CriteriaBuilder::new(query).build());
-
-            for await row in sqlx::query(&sql)
-            .fetch(&self.pool) {
-                let row = row?;
-                let id = row.get(0);
-
-                let payload = self.serde.deserialize(row.get(1))?;
-                let payload: QE = payload.try_into().map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
-                yield Ok(PersistedEvent::new(id, payload).into());
+        stream!{
+            let mut conn = self.pool.acquire().await?;
+            let mut stream = self.stream_with(&mut *conn, query);
+            while let Some(item) = stream.next().await {
+                yield item;
             }
-            yield Ok(StreamItem::End(epoch))
-        }
-        .boxed()
+        }.boxed()
     }
 
     /// Appends new events to the event store.

@@ -90,9 +90,6 @@ where
         sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
             .execute(&self.event_store.pool)
             .await?;
-        sqlx::query(include_str!("listener/sql/add_column_processing_until.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
         sqlx::query(include_str!("listener/sql/fn_notify_event_listener.sql"))
             .execute(&self.event_store.pool)
             .await?;

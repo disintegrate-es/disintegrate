@@ -165,7 +165,8 @@ async fn it_handles_events(pool: PgPool) {
         )
         .await
         .unwrap();
-    event_handler_executor.handle_events_from(0).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    event_handler_executor.handle_events_from(0, &mut tx).await.unwrap();
 
     let carts = Cart::carts(&pool).await.unwrap();
     assert_eq!(carts.len(), 1);

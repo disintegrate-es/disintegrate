@@ -11,11 +11,11 @@ pub(crate) mod id_indexer;
 
 use crate::{Error, Migrator, PgEventId};
 use async_trait::async_trait;
-use disintegrate::{Event, EventListener, EventStore, StreamItem, StreamQuery};
+use disintegrate::{Event, EventListener, StreamItem, StreamQuery};
 use disintegrate_serde::Serde;
 use futures::future::join_all;
 use futures::{try_join, Future, StreamExt};
-use sqlx::Row;
+use sqlx::{Postgres, Row, Transaction};
 use std::error::Error as StdError;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -199,7 +199,6 @@ pub struct PgEventListenerConfig {
     poll: Duration,
     fetch_size: usize,
     notifier_enabled: bool,
-    processing_timeout: Duration,
 }
 
 impl PgEventListenerConfig {
@@ -217,7 +216,6 @@ impl PgEventListenerConfig {
             poll,
             fetch_size: usize::MAX,
             notifier_enabled: false,
-            processing_timeout: Duration::from_secs(60),
         }
     }
 
@@ -233,21 +231,6 @@ impl PgEventListenerConfig {
     /// A new `PgEventListenerConfig` instance.
     pub fn fetch_size(mut self, fetch_size: usize) -> Self {
         self.fetch_size = fetch_size;
-        self
-    }
-
-    /// Sets the processing timeout duration.
-    /// This determines how long a listener instance can hold the processing lock.
-    ///
-    /// # Parameters
-    ///
-    /// * `timeout`: The duration for which the processing lock is held.
-    ///
-    /// # Returns
-    ///
-    /// The updated `PgEventListenerConfig` instance.
-    pub fn with_processing_timeout(mut self, timeout: Duration) -> Self {
-        self.processing_timeout = timeout;
         self
     }
 
@@ -311,32 +294,22 @@ where
         }
     }
 
-    async fn acquire_listener(&self) -> Result<Option<PgEventId>, sqlx::Error> {
-        let mut tx = self.event_store.pool.begin().await?;
-        let result = sqlx::query(
-            r#"
-                UPDATE event_listener
-                SET processing_until = NOW() + ($1 || ' seconds')::interval
-                WHERE id = $2
-                AND (processing_until IS NULL OR processing_until < NOW())
-                RETURNING last_processed_event_id
-                "#,
-        )
-        .bind(self.config.processing_timeout.as_secs() as i64)
+    async fn acquire_listener(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Option<PgEventId>, sqlx::Error> {
+        Ok(sqlx::query("SELECT last_processed_event_id FROM event_listener WHERE id = $1 FOR UPDATE SKIP LOCKED")
         .bind(self.event_handler.id())
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut **tx)
         .await?
-        .map(|r| r.get(0));
-
-        tx.commit().await?;
-        Ok(result)
+        .map(|r| r.get(0)))
     }
 
     async fn release_listener(
         &self,
         result: Result<PgEventId, PgEventListenerError>,
+        mut tx: Transaction<'_, Postgres>,
     ) -> Result<(), sqlx::Error> {
-        let mut tx = self.event_store.pool.begin().await?;
         let last_processed_event_id = match result {
             Ok(last_processed_event_id) => last_processed_event_id,
             Err(PgEventListenerError {
@@ -344,7 +317,7 @@ where
             }) => last_processed_event_id,
         };
         sqlx::query(
-            "UPDATE event_listener SET last_processed_event_id = $1, processing_until = NULL, updated_at = now() WHERE id = $2",
+            "UPDATE event_listener SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
         )
         .bind(last_processed_event_id)
         .bind(self.event_handler.id())
@@ -353,9 +326,10 @@ where
         tx.commit().await
     }
 
-    pub async fn handle_events_from(
+    async fn handle_events_from(
         &self,
         mut last_processed_event_id: PgEventId,
+        tx: &mut Transaction<'_, Postgres>,
     ) -> Result<PgEventId, PgEventListenerError> {
         let query = self
             .event_handler
@@ -363,9 +337,10 @@ where
             .clone()
             .change_origin(last_processed_event_id);
 
-        let mut stream = self.event_store.stream(&query).take(self.config.fetch_size);
-
-        let started_at = std::time::Instant::now();
+        let mut stream = self
+            .event_store
+            .stream_with(&mut **tx, &query)
+            .take(self.config.fetch_size);
 
         while let Some(item) = stream.next().await {
             let item = item.map_err(|_| PgEventListenerError {
@@ -390,14 +365,7 @@ where
                     last_processed_event_id = event_id;
                 }
             }
-
-            // Stop if shutdown was requested
             if self.shutdown_token.is_cancelled() {
-                break;
-            }
-
-            // Stop close to the acquire timeout
-            if started_at.elapsed() >= self.config.processing_timeout {
                 break;
             }
         }
@@ -406,11 +374,12 @@ where
     }
 
     pub async fn try_execute(&self) -> Result<(), sqlx::Error> {
-        let Some(last_processed_id) = self.acquire_listener().await? else {
+        let mut tx = self.event_store.pool.begin().await?;
+        let Some(last_processed_id) = self.acquire_listener(&mut tx).await? else {
             return Ok(()); // Another instance is processing
         };
-        let result = self.handle_events_from(last_processed_id).await;
-        self.release_listener(result).await
+        let result = self.handle_events_from(last_processed_id, &mut tx).await;
+        self.release_listener(result, tx).await
     }
 
     async fn execute(&self) -> Result<(), Error> {
