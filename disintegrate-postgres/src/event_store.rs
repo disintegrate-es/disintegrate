@@ -114,7 +114,6 @@ where
     S: Serde<E> + Send + Sync,
     E: Event + Send + Sync,
 {
-
     /// Streams events based on the provided query and executor.
     ///
     /// # Arguments
@@ -128,42 +127,58 @@ where
     /// or an error of type `Error`.
     pub(crate) fn stream_with<'a, QE, EX>(
         &'a self,
-        executor: &'a mut EX,
+        executor: EX,
         query: &'a StreamQuery<PgEventId, QE>,
     ) -> BoxStream<'a, Result<StreamItem<PgEventId, QE>, Error>>
     where
-        for<'e> &'e mut EX: sqlx::Executor<'e, Database = sqlx::Postgres>,
-        QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
-        <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
+        EX: sqlx::PgExecutor<'a> + Send + Sync + 'a,
+        QE: TryFrom<E> + Event + Clone + Send + Sync + 'static,
+        <QE as TryFrom<E>>::Error: StdError + Send + Sync + 'static,
     {
-        stream! {
-            let epoch: i64 = sqlx::query_scalar(
-                "SELECT event_store_current_epoch()"
+        let sql = format!(
+            r#"
+            WITH epoch AS (
+                SELECT event_store_current_epoch() AS value
             )
-            .fetch_one(&mut *executor)
-            .await?;
+            SELECT * FROM (
+                SELECT
+                    false AS last,
+                    e.event_id,
+                    e.payload
+                FROM event e, epoch
+                WHERE e.event_id <= epoch.value
+                  AND ({criteria})
 
-            let sql = format!(
-                "SELECT event_id, payload
-             FROM event
-             WHERE event_id <= {epoch} AND ({})
-             ORDER BY event_id ASC",
-                CriteriaBuilder::new(query).build()
-            );
+                UNION ALL
 
-            for await row in sqlx::query(&sql).fetch(&mut *executor) {
+                SELECT
+                    true AS last,
+                    epoch.value AS event_id, 
+                    NULL::bytea AS payload
+                FROM epoch
+            ) AS sub
+            ORDER BY last ASC, event_id ASC"#,
+            criteria = CriteriaBuilder::new(query).build()
+        );
+
+        stream! {
+            let mut rows = sqlx::query(&sql).fetch(executor);
+            while let Some(row) = rows.next().await {
                 let row = row?;
-                let id = row.get(0);
+                let last: bool = row.get("last");
+                let id: i64 = row.get("event_id");
 
-                let payload = self.serde.deserialize(row.get(1))?;
-                let payload: QE = payload
-                    .try_into()
-                    .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
+                if last {
+                    yield Ok(StreamItem::End(id));
+                } else {
+                    let payload = self.serde.deserialize(row.get("payload"))?;
+                    let payload: QE = payload
+                        .try_into()
+                        .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
 
-                yield Ok(PersistedEvent::new(id, payload).into());
+                    yield Ok(StreamItem::Event(PersistedEvent::new(id, payload).into()));
+                }
             }
-
-            yield Ok(StreamItem::End(epoch))
         }
         .boxed()
     }
@@ -205,13 +220,7 @@ where
         QE: TryFrom<E> + Event + 'static + Clone + Send + Sync,
         <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
-        stream!{
-            let mut conn = self.pool.acquire().await?;
-            let mut stream = self.stream_with(&mut *conn, query);
-            while let Some(item) = stream.next().await {
-                yield item;
-            }
-        }.boxed()
+        self.stream_with(&self.pool, query)
     }
 
     /// Appends new events to the event store.
