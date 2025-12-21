@@ -64,7 +64,7 @@ struct CartEventPayload {
     quantity: i64,
 }
 
-#[derive(FromRow)]
+#[derive(FromRow, Debug)]
 struct Cart {
     cart_id: String,
     product_id: String,

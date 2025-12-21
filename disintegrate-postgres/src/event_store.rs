@@ -136,49 +136,29 @@ where
         <QE as TryFrom<E>>::Error: StdError + Send + Sync + 'static,
     {
         let sql = format!(
-            r#"
-            WITH epoch AS (
-                SELECT event_store_current_epoch() AS value
-            )
-            SELECT * FROM (
-                SELECT
-                    false AS last,
-                    e.event_id,
-                    e.payload
-                FROM event e, epoch
-                WHERE e.event_id <= epoch.value
-                  AND ({criteria})
-
-                UNION ALL
-
-                SELECT
-                    true AS last,
-                    epoch.value AS event_id, 
-                    NULL::bytea AS payload
-                FROM epoch
-            ) AS sub
-            ORDER BY last ASC, event_id ASC"#,
+            r#"SELECT event.event_id, event.payload, epoch.epoch_id
+            FROM (values (event_store_current_epoch())) AS epoch(epoch_id)
+            LEFT JOIN event ON event.event_id <= epoch.epoch_id AND ({criteria})
+            ORDER BY event_id ASC"#,
             criteria = CriteriaBuilder::new(query).build()
         );
 
         stream! {
             let mut rows = sqlx::query(&sql).fetch(executor);
+            let mut epoch_id: PgEventId = 0;
             while let Some(row) = rows.next().await {
                 let row = row?;
-                let last: bool = row.get("last");
-                let id: i64 = row.get("event_id");
-
-                if last {
-                    yield Ok(StreamItem::End(id));
-                } else {
-                    let payload = self.serde.deserialize(row.get("payload"))?;
+                let event_id: Option<i64> = row.get(0);
+                epoch_id = row.get(2);
+                if let Some(event_id) = event_id {
+                    let payload = self.serde.deserialize(row.get(1))?;
                     let payload: QE = payload
                         .try_into()
                         .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
-
                     yield Ok(StreamItem::Event(PersistedEvent::new(id, payload)));
                 }
             }
+            yield Ok(StreamItem::End(epoch_id));
         }
         .boxed()
     }
@@ -272,8 +252,8 @@ where
         };
 
         sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY($1))
-                       FROM (SELECT event_id FROM event_sequence WHERE event_id = ANY($1) 
-                       OR ((consumed = 0 OR committed = true) 
+                       FROM (SELECT event_id FROM event_sequence WHERE event_id = ANY($1)
+                       OR ((consumed = 0 OR committed = true)
                        AND (event_id <= $2 AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
                     CriteriaBuilder::new(&query.change_origin(version)).build()))
             .bind(&event_ids)
@@ -297,8 +277,8 @@ where
         Ok(persisted_events)
     }
 
-    /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying  
-    /// whether new events have been added since the last read.  
+    /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying
+    /// whether new events have been added since the last read.
     ///
     /// # Arguments
     ///
