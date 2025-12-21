@@ -43,7 +43,13 @@ where
 
     /// Init `PgEventStore` database
     pub async fn init_event_store(&self) -> Result<(), Error> {
-        const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
+        const RESERVED_NAMES: &[&str] = &[
+            "event_id",
+            "payload",
+            "event_type",
+            "inserted_at",
+            "__epoch_id",
+        ];
 
         sqlx::query(include_str!("event_store/sql/table_event.sql"))
             .execute(&self.event_store.pool)

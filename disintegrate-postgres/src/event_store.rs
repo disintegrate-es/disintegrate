@@ -136,9 +136,9 @@ where
         <QE as TryFrom<E>>::Error: StdError + Send + Sync + 'static,
     {
         let sql = format!(
-            r#"SELECT event.event_id, event.payload, epoch.epoch_id
-            FROM (values (event_store_current_epoch())) AS epoch(epoch_id)
-            LEFT JOIN event ON event.event_id <= epoch.epoch_id AND ({criteria})
+            r#"SELECT event.event_id, event.payload, epoch.__epoch_id
+            FROM (values (event_store_current_epoch())) AS epoch(__epoch_id)
+            LEFT JOIN event ON event.event_id <= epoch.__epoch_id AND ({criteria})
             ORDER BY event_id ASC"#,
             criteria = CriteriaBuilder::new(query).build()
         );
