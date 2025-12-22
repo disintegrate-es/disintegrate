@@ -219,8 +219,8 @@ pub struct PgEventListenerError<HE> {
 
 /// Decision returned by a retry policy for error handling.
 pub enum RetryDecision {
-    /// Stop retrying and exit the retry loop.
-    Stop,
+    /// Stop the event listner.
+    Abort,
     /// Wait for the specified duration before retrying again.
     Wait { duration: Duration },
 }
@@ -311,7 +311,7 @@ pub struct AbortRetry;
 
 impl<HE> Retry<HE> for AbortRetry {
     fn retry(&self, _error: &PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
-        RetryDecision::Stop
+        RetryDecision::Abort
     }
 }
 
@@ -521,7 +521,7 @@ where
             match self.try_execute().await {
                 Ok(_) => break,
                 Err(err) => match self.config.retry.retry(&err, attempts) {
-                    RetryDecision::Stop => break,
+                    RetryDecision::Abort => break,
                     RetryDecision::Wait { duration } => {
                         attempts += 1;
                         tokio::time::sleep(duration).await;
