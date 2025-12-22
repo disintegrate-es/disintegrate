@@ -246,7 +246,7 @@ pub struct PgEventListenerConfig<R> {
     retry: R,
 }
 
-impl<R> PgEventListenerConfig<R> {
+impl PgEventListenerConfig<AbortRetry> {
     /// Creates a new `PgEventListenerConfig` with the specified poll interval.
     ///
     /// # Parameters
@@ -264,7 +264,9 @@ impl<R> PgEventListenerConfig<R> {
             retry: AbortRetry,
         }
     }
+}
 
+impl<R> PgEventListenerConfig<R> {
     /// Sets the fetch size for the event listener.
     /// The fetch size determines the number of events to fetch from the event store at a time.
     ///

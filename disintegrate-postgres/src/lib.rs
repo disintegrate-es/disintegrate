@@ -10,7 +10,7 @@ pub use crate::event_store::PgEventStore;
 #[cfg(feature = "listener")]
 pub use crate::listener::{
     id_indexer::{Error as PgIdIndexerError, PgIdIndexer},
-    PgEventListener, PgEventListenerConfig,
+    AbortRetry, PgEventListener, PgEventListenerConfig,
 };
 pub use crate::snapshotter::PgSnapshotter;
 use disintegrate::{DecisionMaker, Event, EventSourcedStateStore, SnapshotConfig, WithSnapshot};
