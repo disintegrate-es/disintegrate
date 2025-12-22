@@ -1,3 +1,4 @@
+
 //! PostgreSQL Event Listener
 //!
 //! This module provides an implementation of a PostgreSQL event listener.
@@ -190,7 +191,7 @@ pub enum PgEventListenerErrorKind<HE> {
     /// Error occurred while initializing the database transaction for the event listener.
     InitTransaction { source: Error },
     /// Error occurred while acquiring a lock for the event listener in the database.
-    AquireLock { source: Error },
+    AcquireLock { source: Error },
     /// Error occurred while fetching the next event from the event store.
     /// Contains the last successfully processed event ID.
     FetchNextEvent {
@@ -219,7 +220,7 @@ pub struct PgEventListenerError<HE> {
 
 /// Decision returned by a retry policy for error handling.
 pub enum RetryDecision {
-    /// Stop the event listner.
+    /// Stop the event listener.
     Abort,
     /// Wait for the specified duration before retrying again.
     Wait { duration: Duration },
@@ -228,6 +229,16 @@ pub enum RetryDecision {
 /// Trait for implementing retry policies for event listener errors.
 pub trait Retry<HE>: Clone + Send + Sync {
     fn retry(&self, error: &PgEventListenerError<HE>, attempts: usize) -> RetryDecision;
+}
+
+/// A retry policy that always aborts on error.
+#[derive(Clone, Default)]
+pub struct AbortRetry;
+
+impl<HE> Retry<HE> for AbortRetry {
+    fn retry(&self, _error: &PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
+        RetryDecision::Abort
+    }
 }
 
 /// PostgreSQL listener Configuration.
@@ -305,14 +316,14 @@ impl<R> PgEventListenerConfig<R> {
         self
     }
 }
-/// A retry policy that always aborts on error.
-#[derive(Clone, Default)]
-pub struct AbortRetry;
 
-impl<HE> Retry<HE> for AbortRetry {
-    fn retry(&self, _error: &PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
-        RetryDecision::Abort
-    }
+
+/// Outcome of a listener execution step.
+enum ListenerExecutionOutcome {
+    /// Continue processing events in the listener loop.
+    Continue,
+    /// Stop the listener loop and terminate processing.
+    Stop,
 }
 
 #[async_trait]
@@ -503,7 +514,7 @@ where
             self.acquire_listener(&mut tx)
                 .await
                 .map_err(|e| PgEventListenerError {
-                    kind: PgEventListenerErrorKind::AquireLock { source: e.into() },
+                    kind: PgEventListenerErrorKind::AcquireLock { source: e.into() },
                     listener_id: self.event_handler.id().to_string(),
                 })?
         else {
@@ -515,13 +526,13 @@ where
     }
 
     /// Executes the event handler with retry logic according to the configured policy.
-    async fn execute(&self) -> Result<(), Error> {
+    async fn execute(&self) -> Result<ListenerExecutionOutcome, Error> {
         let mut attempts = 0;
         loop {
             match self.try_execute().await {
-                Ok(_) => break,
+                Ok(_) => break Ok(ListenerExecutionOutcome::Continue),
                 Err(err) => match self.config.retry.retry(&err, attempts) {
-                    RetryDecision::Abort => break,
+                    RetryDecision::Abort => break Ok(ListenerExecutionOutcome::Stop),
                     RetryDecision::Wait { duration } => {
                         attempts += 1;
                         tokio::time::sleep(duration).await;
@@ -529,7 +540,6 @@ where
                 },
             }
         }
-        Ok(())
     }
 
     /// Spawns the event handler as a background task, polling and/or waiting for notifications.
@@ -540,12 +550,17 @@ where
         let mut wake_tx = self.wake_channel.1.clone();
         tokio::spawn(async move {
             loop {
-                tokio::select! {
-                    Ok(()) =  wake_tx.changed() => self.execute().await?,
+                let outcome = tokio::select! {
+                    Ok(()) = wake_tx.changed() => self.execute().await?,
                     _ = poll.tick() => self.execute().await?,
                     _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                 };
+                match outcome {
+                    ListenerExecutionOutcome::Continue => {},
+                    ListenerExecutionOutcome::Stop => break,
+                }
             }
+            Ok(())
         })
     }
 }
