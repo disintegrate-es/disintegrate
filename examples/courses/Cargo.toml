@@ -8,11 +8,11 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-disintegrate = { version = "2.1.0", path = "../../disintegrate", features = [
+disintegrate = { version = "3.0.0", path = "../../disintegrate", features = [
 	"macros",
 	"serde-prost",
 ] }
-disintegrate-postgres = { version = "2.1.0", path = "../../disintegrate-postgres", features = [
+disintegrate-postgres = { version = "3.0.0", path = "../../disintegrate-postgres", features = [
 	"listener",
 ] }
 anyhow = "1.0.94"
