@@ -176,7 +176,7 @@ where
                         .try_into()
                         .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
 
-                    yield Ok(StreamItem::Event(PersistedEvent::new(id, payload).into()));
+                    yield Ok(StreamItem::Event(PersistedEvent::new(id, payload)));
                 }
             }
         }

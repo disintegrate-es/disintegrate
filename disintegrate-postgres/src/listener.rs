@@ -1,4 +1,3 @@
-
 //! PostgreSQL Event Listener
 //!
 //! This module provides an implementation of a PostgreSQL event listener.
@@ -91,7 +90,7 @@ where
     pub fn register_listener<QE, L>(
         mut self,
         event_listener: L,
-        config: PgEventListenerConfig<impl Retry<L::Error> + 'static>,
+        config: PgEventListenerConfig<impl Retry<L::Error> + Send + Sync + Clone + 'static>,
     ) -> Self
     where
         L: EventListener<PgEventId, QE> + 'static,
@@ -227,8 +226,8 @@ pub enum RetryDecision {
 }
 
 /// Trait for implementing retry policies for event listener errors.
-pub trait Retry<HE>: Clone + Send + Sync {
-    fn retry(&self, error: &PgEventListenerError<HE>, attempts: usize) -> RetryDecision;
+pub trait Retry<HE> {
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryDecision;
 }
 
 /// A retry policy that always aborts on error.
@@ -236,8 +235,14 @@ pub trait Retry<HE>: Clone + Send + Sync {
 pub struct AbortRetry;
 
 impl<HE> Retry<HE> for AbortRetry {
-    fn retry(&self, _error: &PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
+    fn retry(&self, _error: PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
         RetryDecision::Abort
+    }
+}
+
+impl<HE, T: Fn(PgEventListenerError<HE>, usize) -> RetryDecision> Retry<HE> for T {
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryDecision {
+        self(error, attempts)
     }
 }
 
@@ -249,12 +254,25 @@ impl<HE> Retry<HE> for AbortRetry {
 ///   listener should poll for new events from the event store. This determines how frequently the
 ///   event handler will handles new events.
 /// * `notifier_enabled`: The `notifier_enabled` indicates if the listener is configured to handle events in "real time".
-#[derive(Clone)]
 pub struct PgEventListenerConfig<R> {
     poll: Duration,
     fetch_size: usize,
     notifier_enabled: bool,
     retry: R,
+}
+
+impl<R> Clone for PgEventListenerConfig<R>
+where
+    R: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            poll: self.poll,
+            fetch_size: self.fetch_size,
+            notifier_enabled: self.notifier_enabled,
+            retry: self.retry.clone(),
+        }
+    }
 }
 
 impl PgEventListenerConfig<AbortRetry> {
@@ -311,12 +329,15 @@ impl<R> PgEventListenerConfig<R> {
     ///
     /// # Returns
     /// The updated `PgEventListenerConfig` instance with the retry policy set.
-    pub fn with_retry(mut self, retry: R) -> Self {
-        self.retry = retry;
-        self
+    pub fn with_retry<R1>(self, retry: R1) -> PgEventListenerConfig<R1> {
+        PgEventListenerConfig {
+            retry,
+            poll: self.poll,
+            fetch_size: self.fetch_size,
+            notifier_enabled: self.notifier_enabled,
+        }
     }
 }
-
 
 /// Outcome of a listener execution step.
 enum ListenerExecutionOutcome {
@@ -359,7 +380,7 @@ where
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<PgEventId, QE> + 'static,
-    R: Retry<L::Error> + 'static,
+    R: Retry<L::Error> + Send + Sync + 'static,
     L::Error: Send + Sync + 'static,
 {
     /// Creates a new executor for the given event handler and configuration.
@@ -531,7 +552,7 @@ where
         loop {
             match self.try_execute().await {
                 Ok(_) => break Ok(ListenerExecutionOutcome::Continue),
-                Err(err) => match self.config.retry.retry(&err, attempts) {
+                Err(err) => match self.config.retry.retry(err, attempts) {
                     RetryDecision::Abort => break Ok(ListenerExecutionOutcome::Stop),
                     RetryDecision::Wait { duration } => {
                         attempts += 1;
@@ -556,7 +577,7 @@ where
                     _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                 };
                 match outcome {
-                    ListenerExecutionOutcome::Continue => {},
+                    ListenerExecutionOutcome::Continue => {}
                     ListenerExecutionOutcome::Stop => break,
                 }
             }
@@ -573,7 +594,7 @@ where
     QE: TryFrom<E> + Into<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<PgEventId, QE> + 'static,
-    R: Retry<L::Error> + 'static,
+    R: Retry<L::Error> + Clone + Send + Sync + 'static,
     L::Error: Send + Sync + 'static,
 {
     async fn init(&self) -> Result<(), Error> {
@@ -606,7 +627,7 @@ where
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
     L: EventListener<PgEventId, QE>,
-    R: Retry<L::Error>,
+    R: Retry<L::Error> + Clone,
     L::Error: Send + Sync + 'static,
 {
     fn clone(&self) -> Self {

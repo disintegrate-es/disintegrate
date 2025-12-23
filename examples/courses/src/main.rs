@@ -4,8 +4,8 @@ use anyhow::{anyhow, Ok, Result};
 use application::Application;
 use disintegrate::serde::prost::Prost;
 use disintegrate_postgres::{
-    decision_maker, PgEventListener, PgEventListenerConfig, PgEventStore, PgSnapshotter,
-    WithPgSnapshot,
+    decision_maker, PgEventListener, PgEventListenerConfig, PgEventListenerError, PgEventStore,
+    PgSnapshotter, RetryDecision, WithPgSnapshot,
 };
 use sqlx::{postgres::PgConnectOptions, PgPool};
 use tokio::signal;
@@ -72,12 +72,22 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
     PgEventListener::builder(event_store)
         .register_listener(
             read_model::ReadModelProjection::try_new(pool).await?,
-            PgEventListenerConfig::poller(Duration::from_secs(5)).with_notifier(),
+            PgEventListenerConfig::poller(Duration::from_secs(5))
+                .with_notifier()
+                .with_retry(handle_read_model_error),
         )
         .start_with_shutdown(shutdown())
         .await
         .map_err(|e| anyhow!("event listener exited with error: {}", e))?;
     Ok(())
+}
+
+fn handle_read_model_error(
+    error: PgEventListenerError<sqlx::Error>,
+    _attempts: usize,
+) -> RetryDecision {
+    tracing::error!(?error, "read model listener failed");
+    RetryDecision::Abort
 }
 
 async fn shutdown() {
