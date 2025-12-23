@@ -155,7 +155,7 @@ where
                     let payload: QE = payload
                         .try_into()
                         .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
-                    yield Ok(StreamItem::Event(PersistedEvent::new(id, payload)));
+                    yield Ok(StreamItem::Event(PersistedEvent::new(event_id, payload)));
                 }
             }
             yield Ok(StreamItem::End(epoch_id));
