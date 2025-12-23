@@ -5,7 +5,7 @@ use application::Application;
 use disintegrate::serde::prost::Prost;
 use disintegrate_postgres::{
     decision_maker, PgEventListener, PgEventListenerConfig, PgEventListenerError, PgEventStore,
-    PgSnapshotter, RetryDecision, WithPgSnapshot,
+    PgSnapshotter, RetryAction, WithPgSnapshot,
 };
 use sqlx::{postgres::PgConnectOptions, PgPool};
 use tokio::signal;
@@ -74,7 +74,7 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
             read_model::ReadModelProjection::try_new(pool).await?,
             PgEventListenerConfig::poller(Duration::from_secs(5))
                 .with_notifier()
-                .with_retry(handle_read_model_error),
+                .with_retry(handle_read_model_retry),
         )
         .start_with_shutdown(shutdown())
         .await
@@ -82,12 +82,12 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
     Ok(())
 }
 
-fn handle_read_model_error(
+fn handle_read_model_retry(
     error: PgEventListenerError<sqlx::Error>,
     _attempts: usize,
-) -> RetryDecision {
+) -> RetryAction {
     tracing::error!(?error, "read model listener failed");
-    RetryDecision::Abort
+    RetryAction::Abort
 }
 
 async fn shutdown() {

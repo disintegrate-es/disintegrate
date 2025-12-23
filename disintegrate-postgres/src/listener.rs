@@ -218,7 +218,7 @@ pub struct PgEventListenerError<HE> {
 }
 
 /// Decision returned by a retry policy for error handling.
-pub enum RetryDecision {
+pub enum RetryAction {
     /// Stop the event listener.
     Abort,
     /// Wait for the specified duration before retrying again.
@@ -227,21 +227,21 @@ pub enum RetryDecision {
 
 /// Trait for implementing retry policies for event listener errors.
 pub trait Retry<HE> {
-    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryDecision;
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryAction;
 }
 
 /// A retry policy that always aborts on error.
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct AbortRetry;
 
 impl<HE> Retry<HE> for AbortRetry {
-    fn retry(&self, _error: PgEventListenerError<HE>, _attempts: usize) -> RetryDecision {
-        RetryDecision::Abort
+    fn retry(&self, _error: PgEventListenerError<HE>, _attempts: usize) -> RetryAction {
+        RetryAction::Abort
     }
 }
 
-impl<HE, T: Fn(PgEventListenerError<HE>, usize) -> RetryDecision> Retry<HE> for T {
-    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryDecision {
+impl<HE, T: Fn(PgEventListenerError<HE>, usize) -> RetryAction> Retry<HE> for T {
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryAction {
         self(error, attempts)
     }
 }
@@ -340,7 +340,7 @@ impl<R> PgEventListenerConfig<R> {
 }
 
 /// Outcome of a listener execution step.
-enum ListenerExecutionOutcome {
+enum ListenerExecutionControl {
     /// Continue processing events in the listener loop.
     Continue,
     /// Stop the listener loop and terminate processing.
@@ -544,14 +544,14 @@ where
     }
 
     /// Executes the event handler with retry logic according to the configured policy.
-    async fn execute(&self) -> ListenerExecutionOutcome {
+    async fn execute(&self) -> ListenerExecutionControl {
         let mut attempts = 0;
         loop {
             match self.try_execute().await {
-                Ok(_) => break ListenerExecutionOutcome::Continue,
+                Ok(_) => break ListenerExecutionControl::Continue,
                 Err(err) => match self.config.retry.retry(err, attempts) {
-                    RetryDecision::Abort => break ListenerExecutionOutcome::Stop,
-                    RetryDecision::Wait { duration } => {
+                    RetryAction::Abort => break ListenerExecutionControl::Stop,
+                    RetryAction::Wait { duration } => {
                         attempts += 1;
                         tokio::time::sleep(duration).await;
                     }
@@ -574,8 +574,8 @@ where
                     _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                 };
                 match outcome {
-                    ListenerExecutionOutcome::Continue => {}
-                    ListenerExecutionOutcome::Stop => break,
+                    ListenerExecutionControl::Continue => {}
+                    ListenerExecutionControl::Stop => break,
                 }
             }
             Ok(())
