@@ -5,8 +5,8 @@ const serverUrl = 'localhost:10437';
 const COURSES = 10;
 const USERS = 500;
 
-const COURSE_ID_PREFIX = 'b_course';
-const STUDENT_ID_PREFIX = 'b_student';
+const COURSE_ID_PREFIX = 'course';
+const STUDENT_ID_PREFIX = 'student';
 
 export let options = {
     vus: USERS,
