@@ -20,21 +20,21 @@ serde-protobuf = ["serde", "disintegrate-serde/protobuf"]
 [dependencies]
 disintegrate-serde = { version = "3.0.0", path = "../disintegrate-serde", optional = true }
 disintegrate-macros = { version = "3.0.0", path = "../disintegrate-macros", optional = true }
-async-trait = "0.1.88"
-futures = "0.3.30"
-lazy_static = "1.4.0"
-regex = "1.11.1"
-serde = { version = "1.0.217", features = ["derive"] }
-thiserror = "2.0.11"
-mockall = "0.13.1"
-paste = "1.0.14"
-uuid = { version = "1.16.0", features = ["serde"] }
-async-stream = "0.3.5"
+async-trait = "0.1.89"
+futures = "0.3.31"
+lazy_static = "1.5.0"
+regex = "1.12.2"
+serde = { version = "1.0.228", features = ["derive"] }
+thiserror = "2.0.17"
+mockall = "0.14.0"
+paste = "1.0.15"
+uuid = { version = "1.19.0", features = ["serde"] }
+async-stream = "0.3.6"
 
 [dev-dependencies]
 assert2 = "0.3.14"
-uuid = { version = "1.16.0", features = ["v4"] }
-tokio = {version = "1.47.1", features = ["macros", "rt-multi-thread"]}
+uuid = { version = "1.19.0", features = ["v4"] }
+tokio = {version = "1.48.0", features = ["macros", "rt-multi-thread"]}
 
 [package.metadata.docs.rs]
 all-features = true

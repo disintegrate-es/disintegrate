@@ -16,18 +16,18 @@ listener = ["dep:tokio-util"]
 disintegrate = { version = "3.0.0", path = "../disintegrate" }
 disintegrate-serde = { version = "3.0.0", path = "../disintegrate-serde" }
 disintegrate-macros = { version = "3.0.0", path = "../disintegrate-macros" }
-serde = "1.0.217"
-serde_json = "1.0.140"
+serde = "1.0.228"
+serde_json = "1.0.146"
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "uuid"] }
-async-trait = "0.1.88"
-futures = "0.3.30"
-async-stream = "0.3.5"
-thiserror = "2.0.11"
-tokio = {version = "1.47.1", features = ["macros"]}
-tokio-util = {version = "0.7.16", optional = true}
-uuid = { version = "1.16.0", features = ["v3"] }
+async-trait = "0.1.89"
+futures = "0.3.31"
+async-stream = "0.3.6"
+thiserror = "2.0.17"
+tokio = {version = "1.48.0", features = ["macros"]}
+tokio-util = {version = "0.7.17", optional = true}
+uuid = { version = "1.19.0", features = ["v3"] }
 md-5 = "0.10.6"
-paste = "1.0.14"
+paste = "1.0.15"
 
 [dev-dependencies]
 disintegrate-serde = { version = "3.0.0", path = "../disintegrate-serde", features = ["json"] }

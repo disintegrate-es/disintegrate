@@ -2,7 +2,7 @@
 use std::marker::PhantomData;
 
 use super::Error;
-use apache_avro::{from_value, Codec, Reader, Schema, Writer};
+use apache_avro::{from_value, Codec, DeflateSettings, Reader, Schema, Writer};
 use serde::{Deserialize, Serialize};
 
 use crate::serde::{Deserializer, Serializer};
@@ -50,7 +50,11 @@ where
     /// Serialized bytes representing the value in Avro format.
     fn serialize(&self, value: I) -> Vec<u8> {
         let target = O::from(value);
-        let mut writer = Writer::with_codec(&self.schema, Vec::new(), Codec::Deflate);
+        let mut writer = Writer::with_codec(
+            &self.schema,
+            Vec::new(),
+            Codec::Deflate(DeflateSettings::default()),
+        );
         writer
             .append_ser(target)
             .expect("avro serialization should not fail");
