@@ -16,7 +16,7 @@ where
     E: Event + Clone,
 {
     builder: sqlx::QueryBuilder<'a, Postgres>,
-    event: &'a E,
+    events: &'a [E],
     consumed: Option<bool>,
     committed: Option<bool>,
 }
@@ -30,10 +30,10 @@ where
     /// # Arguments
     ///
     /// * `event` - The event to be inserted.
-    pub fn new(event: &'a E) -> Self {
+    pub fn new(events: &'a [E]) -> Self {
         Self {
             builder: sqlx::QueryBuilder::new("INSERT INTO event_sequence ("),
-            event,
+            events,
             consumed: None,
             committed: None,
         }
@@ -62,14 +62,13 @@ where
 
     /// Builds the SQL insert query.
     pub fn build(&'a mut self) -> Query<'a, Postgres, PgArguments> {
-        let domain_identifiers = self.event.domain_identifiers();
+        let mut all_identifiers: BTreeSet<Identifier> = BTreeSet::new();
+        for event in self.events.iter() {
+            all_identifiers.extend(event.domain_identifiers().keys());
+        }
         let mut separated_builder = self.builder.separated(",");
 
         separated_builder.push("event_type");
-
-        for ident in domain_identifiers.keys() {
-            separated_builder.push(ident);
-        }
 
         if self.consumed.is_some() {
             separated_builder.push("consumed");
@@ -79,29 +78,34 @@ where
             separated_builder.push("committed");
         }
 
-        separated_builder.push_unseparated(") VALUES (");
+        for ident in &all_identifiers {
+            separated_builder.push(ident);
+        }
 
-        separated_builder.push_bind_unseparated(self.event.name());
+        separated_builder.push_unseparated(") ");
 
-        for value in domain_identifiers.values() {
-            match value {
-                disintegrate::IdentifierValue::String(value) => {
-                    separated_builder.push_bind(value.clone())
+        self.builder.push_values(self.events, |mut b, event| {
+            b.push_bind(event.name());
+            if let Some(consumed) = self.consumed {
+                b.push(if consumed { 1 } else { 0 });
+            }
+            if let Some(committed) = self.committed {
+                b.push(committed);
+            }
+            let event_identifiers = event.domain_identifiers();
+            for ident in &all_identifiers {
+                if let Some(value) = event_identifiers.get(ident) {
+                    match value {
+                        disintegrate::IdentifierValue::String(value) => b.push_bind(value.clone()),
+                        disintegrate::IdentifierValue::i64(value) => b.push_bind(*value),
+                        disintegrate::IdentifierValue::Uuid(value) => b.push_bind(*value),
+                    };
+                } else {
+                    b.push("NULL");
                 }
-                disintegrate::IdentifierValue::i64(value) => separated_builder.push_bind(*value),
-                disintegrate::IdentifierValue::Uuid(value) => separated_builder.push_bind(*value),
-            };
-        }
-
-        if let Some(consumed) = self.consumed {
-            separated_builder.push(if consumed { 1 } else { 0 });
-        }
-
-        if let Some(committed) = self.committed {
-            separated_builder.push(committed);
-        }
-
-        separated_builder.push_unseparated(") RETURNING (event_id)");
+            }
+        });
+        self.builder.push(" RETURNING (event_id)");
 
         self.builder.build()
     }
@@ -159,7 +163,7 @@ where
             separated_builder.push(ident);
         }
 
-        separated_builder.push_unseparated(")");
+        separated_builder.push_unseparated(") ");
 
         self.builder.push_values(self.events, |mut b, event| {
             b.push_bind(event.id());
@@ -255,16 +259,51 @@ mod tests {
     }
 
     #[test]
-    fn it_builds_insert() {
-        let event = ShoppingCartEvent::Added {
-            product_id: "product_1".into(),
-            cart_id: "cart_1".into(),
-            quantity: 10,
-        };
-        let mut insert_query = InsertEventSequenceBuilder::new(&event);
+    fn it_builds_event_sequence_insert() {
+        let events = &[
+            ShoppingCartEvent::Added {
+                product_id: "product_1".into(),
+                cart_id: "cart_1".into(),
+                quantity: 10,
+            },
+            ShoppingCartEvent::Removed {
+                product_id: "product_1".into(),
+                cart_id: "cart_1".into(),
+                quantity: 10,
+            },
+        ];
+        let mut insert_query = InsertEventSequenceBuilder::new(events);
         assert_eq!(
             insert_query.build().sql(),
-            "INSERT INTO event_sequence (event_type,cart_id,product_id) VALUES ($1,$2,$3) RETURNING (event_id)"
+            "INSERT INTO event_sequence (event_type,cart_id,product_id) VALUES ($1, $2, $3), ($4, $5, $6) RETURNING (event_id)"
+        );
+    }
+
+    #[test]
+    fn it_builds_event_insert() {
+        let events = &[
+            PersistedEvent::new(
+                0,
+                ShoppingCartEvent::Added {
+                    product_id: "product_1".into(),
+                    cart_id: "cart_1".into(),
+                    quantity: 10,
+                },
+            ),
+            PersistedEvent::new(
+                1,
+                ShoppingCartEvent::Removed {
+                    product_id: "product_1".into(),
+                    cart_id: "cart_1".into(),
+                    quantity: 10,
+                },
+            ),
+        ];
+        let serde = disintegrate_serde::serde::json::Json::default();
+        let mut insert_query = InsertEventsBuilder::new(events, &serde);
+        assert_eq!(
+            insert_query.build().sql(),
+            "INSERT INTO event (event_id,event_type,payload,cart_id,product_id) VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)"
         );
     }
 }

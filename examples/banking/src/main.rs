@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
 
     let serde = disintegrate::serde::json::Json::<DomainEvent>::default();
     let event_store = PgEventStore::new_uninitialized(pool.clone(), serde);
-    let snapshotter = PgSnapshotter::new(pool, 10).await?;
+    let snapshotter = PgSnapshotter::try_new(pool, 10).await?;
     let decision_maker =
         disintegrate_postgres::decision_maker(event_store, WithSnapshot::new(snapshotter));
 

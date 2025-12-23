@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let serde = Json::<DomainEvent>::default();
 
     // Create a PostgreSQL event store
-    let event_store = PgEventStore::new(pool, serde).await?;
+    let event_store = PgEventStore::try_new(pool, serde).await?;
 
     // Create a Postgres DecisionMaker
     let decision_maker = disintegrate_postgres::decision_maker(event_store, NoSnapshot);

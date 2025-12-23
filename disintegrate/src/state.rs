@@ -2,10 +2,10 @@
 use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::event::Event;
 use crate::event::EventId;
 use crate::stream_query::StreamQuery;
-use crate::{all_the_tuples, union, BoxDynError, StateSnapshotter};
-use crate::{event::Event, PersistedEvent};
+use crate::{all_the_tuples, union, BoxDynError, StateSnapshotter, StreamItem};
 use async_trait::async_trait;
 use paste::paste;
 use std::error::Error as StdError;
@@ -35,7 +35,7 @@ pub trait MultiState<ID: EventId, E: Event + Clone> {
     /// # Arguments
     ///
     /// * `event` - The event to be applied to mutate the sub-states.
-    fn mutate_all(&mut self, event: PersistedEvent<ID, E>);
+    fn mutate_all<I: Into<StreamItem<ID, E>>>(&mut self, item: I);
     /// The unified query that represents the union of queries for all sub-states.
     ///
     /// This query can be used to retrieve a stream of events relevant to the entire multi-state
@@ -75,16 +75,17 @@ macro_rules! impl_multi_state {
             <<$last as StateQuery>::Event as TryFrom<E>>::Error:
                 StdError + 'static + Send + Sync,
         {
-            fn mutate_all(&mut self, event: PersistedEvent<ID, E>) {
+            fn mutate_all<I: Into<StreamItem<ID, E>>>(&mut self, item: I) {
+                let item = item.into();
                 paste! {
                     let ($([<state_ $ty:lower>],)* [<state_ $last:lower>])= self;
                     $(
-                        if [<state_ $ty:lower>].matches_event(&event) {
-                            [<state_ $ty:lower>].mutate_part(event.clone());
+                        if [<state_ $ty:lower>].matches_item(&item) {
+                            [<state_ $ty:lower>].mutate_part(item.clone());
                         }
                     )*
-                    if [<state_ $last:lower>].matches_event(&event) {
-                         [<state_ $last:lower>].mutate_part(event.clone());
+                    if [<state_ $last:lower>].matches_item(&item) {
+                         [<state_ $last:lower>].mutate_part(item.clone());
                     }
                 }
             }
@@ -243,23 +244,33 @@ impl<ID: EventId, S: StateQuery> StatePart<ID, S> {
         self.inner.query().change_origin(self.version)
     }
 
-    pub fn matches_event<U>(&self, event: &PersistedEvent<ID, U>) -> bool
+    pub fn matches_item<U>(&self, item: &StreamItem<ID, U>) -> bool
     where
         U: Event + Clone,
         <S as StateQuery>::Event: Into<U>,
     {
-        self.query_part().cast().matches(event)
+        match item {
+            StreamItem::End(_) => true,
+            StreamItem::Event(event) => self.query_part().cast().matches(event),
+        }
     }
-    pub fn mutate_part<E>(&mut self, event: PersistedEvent<ID, E>)
+    pub fn mutate_part<E>(&mut self, item: StreamItem<ID, E>)
     where
         E: Event,
         S: StateMutate,
         <S as StateQuery>::Event: TryFrom<E>,
         <<S as StateQuery>::Event as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     {
-        self.version = event.id;
-        self.applied_events += 1;
-        self.inner.mutate(event.event.try_into().unwrap());
+        match item {
+            StreamItem::End(version) => {
+                self.version = version;
+            }
+            StreamItem::Event(event) => {
+                self.version = event.id;
+                self.applied_events += 1;
+                self.inner.mutate(event.event.try_into().unwrap());
+            }
+        }
     }
 }
 
@@ -347,7 +358,7 @@ all_the_tuples!(impl_from_state);
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::tests::*;
+    use crate::{utils::tests::*, PersistedEvent};
 
     #[test]
     fn it_mutates_all() {

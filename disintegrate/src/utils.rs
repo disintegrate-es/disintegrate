@@ -202,7 +202,7 @@ pub const fn eq(lhs: &str, rhs: &str) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::event::EventId;
+    use crate::{event::EventId, StreamItem};
     use async_trait::async_trait;
     use futures::{
         stream::{self, BoxStream},
@@ -243,12 +243,12 @@ pub mod tests {
 
     pub fn event_stream<E: Event + Clone>(
         events: impl Into<Vec<E>>,
-    ) -> Vec<Result<PersistedEvent<i64, E>, Error>> {
+    ) -> Vec<Result<StreamItem<i64, E>, Error>> {
         events
             .into()
             .into_iter()
             .enumerate()
-            .map(|(id, event)| Ok(PersistedEvent::new((id + 1) as i64, event)))
+            .map(|(id, event)| Ok(PersistedEvent::new((id + 1) as i64, event).into()))
             .collect()
     }
 
@@ -317,7 +317,7 @@ pub mod tests {
         fn stream<QE: Event + Clone + 'static + Send + Sync>(
             &self,
             query: &StreamQuery<i64, QE>,
-        ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
+        ) -> Vec<Result<StreamItem<i64, QE>, Error>>;
 
         fn append<QE: Event + Clone + 'static + Send + Sync>(
             &self,
@@ -337,7 +337,7 @@ pub mod tests {
             fn stream<QE: Event + Clone + 'static + Send + Sync>(
                 &self,
                 query: &StreamQuery<i64, QE>,
-            ) -> Vec<Result<PersistedEvent<i64, QE>, Error>>;
+            ) -> Vec<Result<StreamItem<i64, QE>, Error>>;
 
             fn append<QE: Event + Clone + 'static + Send + Sync>(
                 &self,
@@ -360,7 +360,7 @@ pub mod tests {
         fn stream<'a, QE>(
             &'a self,
             query: &'a StreamQuery<i64, QE>,
-        ) -> BoxStream<'a, Result<PersistedEvent<i64, QE>, Self::Error>>
+        ) -> BoxStream<'a, Result<StreamItem<i64, QE>, Self::Error>>
         where
             QE: TryFrom<ShoppingCartEvent> + Event + 'static + Clone + Send + Sync,
             <QE as TryFrom<ShoppingCartEvent>>::Error: StdError + 'static + Send + Sync,

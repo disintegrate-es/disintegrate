@@ -9,13 +9,13 @@ mod tests;
 
 pub(crate) mod id_indexer;
 
-use crate::{Error, PgEventId};
+use crate::{Error, Migrator, PgEventId};
 use async_trait::async_trait;
-use disintegrate::{Event, EventListener, EventStore, StreamQuery};
+use disintegrate::{Event, EventListener, StreamItem, StreamQuery};
 use disintegrate_serde::Serde;
 use futures::future::join_all;
 use futures::{try_join, Future, StreamExt};
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{Postgres, Row, Transaction};
 use std::error::Error as StdError;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -87,14 +87,16 @@ where
     /// # Returns
     ///
     /// The updated `PgEventListener` instance with the registered event handler.
-    pub fn register_listener<QE>(
+    pub fn register_listener<QE, L>(
         mut self,
-        event_listener: impl EventListener<PgEventId, QE> + 'static,
-        config: PgEventListenerConfig,
+        event_listener: L,
+        config: PgEventListenerConfig<impl Retry<L::Error> + Send + Sync + Clone + 'static>,
     ) -> Self
     where
+        L: EventListener<PgEventId, QE> + 'static,
         QE: TryFrom<E> + Into<E> + Event + Send + Sync + Clone + 'static,
         <QE as TryFrom<E>>::Error: StdError + Send + Sync,
+        L::Error: Send + Sync + 'static,
     {
         self.executors.push(Box::new(PgEventListerExecutor::new(
             self.event_store.clone(),
@@ -112,7 +114,9 @@ where
     /// A `Result` indicating the success or failure of the listener process.
     pub async fn start(self) -> Result<(), Error> {
         if self.intialize {
-            setup(&self.event_store.pool).await?;
+            Migrator::new(self.event_store.clone())
+                .init_listener()
+                .await?;
         }
         let mut handles = vec![];
         let mut wakers = vec![];
@@ -180,8 +184,66 @@ where
 }
 
 #[derive(Debug)]
-pub struct PgEventListenerError {
-    last_processed_event_id: PgEventId,
+
+/// Represents the different error kinds that can occur in the event listener lifecycle.
+pub enum PgEventListenerErrorKind<HE> {
+    /// Error occurred while initializing the database transaction for the event listener.
+    InitTransaction { source: Error },
+    /// Error occurred while acquiring a lock for the event listener in the database.
+    AcquireLock { source: Error },
+    /// Error occurred while fetching the next event from the event store.
+    /// Contains the last successfully processed event ID.
+    FetchNextEvent {
+        source: Error,
+        last_processed_event_id: PgEventId,
+    },
+    /// Error occurred in the user-provided event handler.
+    /// Contains the last successfully processed event ID and the handler's error.
+    Handler {
+        source: HE,
+        last_processed_event_id: PgEventId,
+    },
+    /// Error occurred while releasing the lock or updating the last processed event ID in the database.
+    ReleaseLock {
+        source: Error,
+        last_processed_event_id: PgEventId,
+    },
+}
+
+#[derive(Debug)]
+/// Error type for the event listener, parameterized by the handler error type.
+pub struct PgEventListenerError<HE> {
+    pub kind: PgEventListenerErrorKind<HE>,
+    pub listener_id: String,
+}
+
+/// Decision returned by a retry policy for error handling.
+pub enum RetryAction {
+    /// Stop the event listener.
+    Abort,
+    /// Wait for the specified duration before retrying again.
+    Wait { duration: Duration },
+}
+
+/// Trait for implementing retry policies for event listener errors.
+pub trait Retry<HE> {
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryAction;
+}
+
+/// A retry policy that always aborts on error.
+#[derive(Clone, Copy, Default)]
+pub struct AbortRetry;
+
+impl<HE> Retry<HE> for AbortRetry {
+    fn retry(&self, _error: PgEventListenerError<HE>, _attempts: usize) -> RetryAction {
+        RetryAction::Abort
+    }
+}
+
+impl<HE, T: Fn(PgEventListenerError<HE>, usize) -> RetryAction> Retry<HE> for T {
+    fn retry(&self, error: PgEventListenerError<HE>, attempts: usize) -> RetryAction {
+        self(error, attempts)
+    }
 }
 
 /// PostgreSQL listener Configuration.
@@ -192,14 +254,28 @@ pub struct PgEventListenerError {
 ///   listener should poll for new events from the event store. This determines how frequently the
 ///   event handler will handles new events.
 /// * `notifier_enabled`: The `notifier_enabled` indicates if the listener is configured to handle events in "real time".
-#[derive(Clone)]
-pub struct PgEventListenerConfig {
+pub struct PgEventListenerConfig<R> {
     poll: Duration,
     fetch_size: usize,
     notifier_enabled: bool,
+    retry: R,
 }
 
-impl PgEventListenerConfig {
+impl<R> Clone for PgEventListenerConfig<R>
+where
+    R: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            poll: self.poll,
+            fetch_size: self.fetch_size,
+            notifier_enabled: self.notifier_enabled,
+            retry: self.retry.clone(),
+        }
+    }
+}
+
+impl PgEventListenerConfig<AbortRetry> {
     /// Creates a new `PgEventListenerConfig` with the specified poll interval.
     ///
     /// # Parameters
@@ -209,14 +285,17 @@ impl PgEventListenerConfig {
     /// # Returns
     ///
     /// A new `PgEventListenerConfig` instance.
-    pub fn poller(poll: Duration) -> Self {
-        Self {
+    pub fn poller(poll: Duration) -> PgEventListenerConfig<AbortRetry> {
+        PgEventListenerConfig {
             poll,
             fetch_size: usize::MAX,
             notifier_enabled: false,
+            retry: AbortRetry,
         }
     }
+}
 
+impl<R> PgEventListenerConfig<R> {
     /// Sets the fetch size for the event listener.
     /// The fetch size determines the number of events to fetch from the event store at a time.
     ///
@@ -242,6 +321,30 @@ impl PgEventListenerConfig {
         self.notifier_enabled = true;
         self
     }
+
+    /// Sets the retry policy for the event listener.
+    ///
+    /// # Parameters
+    /// * `retry`: The retry policy to use.
+    ///
+    /// # Returns
+    /// The updated `PgEventListenerConfig` instance with the retry policy set.
+    pub fn with_retry<R1>(self, retry: R1) -> PgEventListenerConfig<R1> {
+        PgEventListenerConfig {
+            retry,
+            poll: self.poll,
+            fetch_size: self.fetch_size,
+            notifier_enabled: self.notifier_enabled,
+        }
+    }
+}
+
+/// Outcome of a listener execution step.
+enum ListenerExecutionControl {
+    /// Continue processing events in the listener loop.
+    Continue,
+    /// Stop the listener loop and terminate processing.
+    Stop,
 }
 
 #[async_trait]
@@ -250,36 +353,42 @@ trait EventListenerExecutor<E: Event + Clone> {
     fn run(&self) -> (Option<ExecutorWaker<E>>, JoinHandle<Result<(), Error>>);
 }
 
-struct PgEventListerExecutor<L, QE, E, S>
+/// Executor for a registered event listener, handling polling, notification, and error management.
+struct PgEventListerExecutor<L, QE, E, S, R>
 where
     QE: TryFrom<E> + Event + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: Send + Sync,
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
     L: EventListener<PgEventId, QE>,
+    R: Retry<L::Error>,
+    L::Error: Send + Sync + 'static,
 {
     event_store: PgEventStore<E, S>,
     event_handler: Arc<L>,
-    config: PgEventListenerConfig,
+    config: PgEventListenerConfig<R>,
     wake_channel: (watch::Sender<bool>, watch::Receiver<bool>),
     shutdown_token: CancellationToken,
     _event_store_events: PhantomData<E>,
     _event_listener_events: PhantomData<QE>,
 }
 
-impl<L, QE, E, S> PgEventListerExecutor<L, QE, E, S>
+impl<L, QE, E, S, R> PgEventListerExecutor<L, QE, E, S, R>
 where
     E: Event + Clone + Sync + Send + 'static,
     S: Serde<E> + Clone + Send + Sync + 'static,
     QE: TryFrom<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<PgEventId, QE> + 'static,
+    R: Retry<L::Error> + Send + Sync + 'static,
+    L::Error: Send + Sync + 'static,
 {
+    /// Creates a new executor for the given event handler and configuration.
     pub fn new(
         event_store: PgEventStore<E, S>,
         event_handler: L,
         shutdown_token: CancellationToken,
-        config: PgEventListenerConfig,
+        config: PgEventListenerConfig<R>,
     ) -> Self {
         Self {
             event_store,
@@ -292,34 +401,39 @@ where
         }
     }
 
-    async fn lock_event_listener(
+    /// Attempts to acquire a lock for this listener in the database, returning the last processed event ID if successful.
+    async fn acquire_listener(
         &self,
         tx: &mut Transaction<'_, Postgres>,
     ) -> Result<Option<PgEventId>, sqlx::Error> {
-        Ok(sqlx::query(
-            r#"
-                SELECT last_processed_event_id 
-                FROM event_listener
-                WHERE id = $1  
-                FOR UPDATE SKIP LOCKED 
-                "#,
-        )
+        Ok(sqlx::query("SELECT last_processed_event_id FROM event_listener WHERE id = $1 FOR UPDATE SKIP LOCKED")
         .bind(self.event_handler.id())
         .fetch_optional(&mut **tx)
         .await?
         .map(|r| r.get(0)))
     }
 
-    async fn release_event_listener(
+    /// Releases the lock for this listener and updates the last processed event ID in the database.
+    async fn release_listener(
         &self,
-        result: Result<PgEventId, PgEventListenerError>,
+        result: Result<PgEventId, PgEventListenerError<L::Error>>,
         mut tx: Transaction<'_, Postgres>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), PgEventListenerError<L::Error>> {
         let last_processed_event_id = match result {
             Ok(last_processed_event_id) => last_processed_event_id,
             Err(PgEventListenerError {
-                last_processed_event_id,
+                kind:
+                    PgEventListenerErrorKind::FetchNextEvent {
+                        last_processed_event_id,
+                        ..
+                    }
+                    | PgEventListenerErrorKind::Handler {
+                        last_processed_event_id,
+                        ..
+                    },
+                ..
             }) => last_processed_event_id,
+            Err(e) => return Err(e),
         };
         sqlx::query(
             "UPDATE event_listener SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
@@ -327,32 +441,71 @@ where
         .bind(last_processed_event_id)
         .bind(self.event_handler.id())
         .execute(&mut *tx)
-        .await?;
-        tx.commit().await
+        .await.map_err(|e| PgEventListenerError::<L::Error>{
+            kind: PgEventListenerErrorKind::ReleaseLock {
+                source: e.into(),
+                last_processed_event_id
+            },
+            listener_id: self.event_handler.id().to_string(),
+        })?;
+        tx.commit()
+            .await
+            .map_err(|e| PgEventListenerError::<L::Error> {
+                kind: PgEventListenerErrorKind::ReleaseLock {
+                    source: e.into(),
+                    last_processed_event_id,
+                },
+                listener_id: self.event_handler.id().to_string(),
+            })?;
+        result.map(|_| ())
     }
 
-    pub async fn handle_events_from(
+    /// Handles events from the event store, starting from the given event ID.
+    async fn handle_events_from(
         &self,
         mut last_processed_event_id: PgEventId,
-    ) -> Result<PgEventId, PgEventListenerError> {
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<PgEventId, PgEventListenerError<L::Error>> {
         let query = self
             .event_handler
             .query()
             .clone()
             .change_origin(last_processed_event_id);
-        let mut events_stream = self.event_store.stream(&query).take(self.config.fetch_size);
 
-        while let Some(event) = events_stream.next().await {
-            let event = event.map_err(|_err| PgEventListenerError {
-                last_processed_event_id,
+        let mut stream = self
+            .event_store
+            .stream_with(&mut **tx, &query)
+            .take(self.config.fetch_size);
+
+        while let Some(item) = stream.next().await {
+            let item = item.map_err(|e| PgEventListenerError::<L::Error> {
+                kind: PgEventListenerErrorKind::FetchNextEvent {
+                    source: e,
+                    last_processed_event_id,
+                },
+                listener_id: self.event_handler.id().to_string(),
             })?;
-            let event_id = event.id();
-            match self.event_handler.handle(event).await {
-                Ok(_) => last_processed_event_id = event_id,
-                Err(_) => {
-                    return Err(PgEventListenerError {
-                        last_processed_event_id,
-                    })
+
+            let event_id = item.id();
+
+            match item {
+                StreamItem::End(_) => {
+                    last_processed_event_id = event_id;
+                    break;
+                }
+                StreamItem::Event(event) => {
+                    self.event_handler
+                        .handle(event)
+                        .await
+                        .map_err(|e| PgEventListenerError {
+                            kind: PgEventListenerErrorKind::Handler {
+                                source: e,
+                                last_processed_event_id,
+                            },
+                            listener_id: self.event_handler.id().to_string(),
+                        })?;
+
+                    last_processed_event_id = event_id;
                 }
             }
             if self.shutdown_token.is_cancelled() {
@@ -363,24 +516,51 @@ where
         Ok(last_processed_event_id)
     }
 
-    pub async fn try_execute(&self) -> Result<(), sqlx::Error> {
-        let mut tx = self.event_store.pool.begin().await?;
-        let Some(last_processed_id) = self.lock_event_listener(&mut tx).await? else {
-            return Ok(());
+    /// Attempts to execute the event handling logic once, with error mapping and lock management.
+    pub async fn try_execute(&self) -> Result<(), PgEventListenerError<L::Error>> {
+        let mut tx = self
+            .event_store
+            .pool
+            .begin()
+            .await
+            .map_err(|e| PgEventListenerError {
+                kind: PgEventListenerErrorKind::InitTransaction { source: e.into() },
+                listener_id: self.event_handler.id().to_string(),
+            })?;
+        let Some(last_processed_id) =
+            self.acquire_listener(&mut tx)
+                .await
+                .map_err(|e| PgEventListenerError {
+                    kind: PgEventListenerErrorKind::AcquireLock { source: e.into() },
+                    listener_id: self.event_handler.id().to_string(),
+                })?
+        else {
+            return Ok(()); // Another instance is processing
         };
-        let result = self.handle_events_from(last_processed_id).await;
-        self.release_event_listener(result, tx).await
+
+        let result = self.handle_events_from(last_processed_id, &mut tx).await;
+
+        self.release_listener(result, tx).await
     }
 
-    async fn execute(&self) -> Result<(), Error> {
-        let result = self.try_execute().await;
-        match result {
-            Err(sqlx::Error::Io(_)) | Err(sqlx::Error::PoolTimedOut) => Ok(()),
-            Err(err) => Err(Error::Database(err)),
-            _ => Ok(()),
+    /// Executes the event handler with retry logic according to the configured policy.
+    async fn execute(&self) -> ListenerExecutionControl {
+        let mut attempts = 0;
+        loop {
+            match self.try_execute().await {
+                Ok(_) => break ListenerExecutionControl::Continue,
+                Err(err) => match self.config.retry.retry(err, attempts) {
+                    RetryAction::Abort => break ListenerExecutionControl::Stop,
+                    RetryAction::Wait { duration } => {
+                        attempts += 1;
+                        tokio::time::sleep(duration).await;
+                    }
+                },
+            }
         }
     }
 
+    /// Spawns the event handler as a background task, polling and/or waiting for notifications.
     pub fn spawn_task(self) -> JoinHandle<Result<(), Error>> {
         let shutdown = self.shutdown_token.clone();
         let mut poll = tokio::time::interval(self.config.poll);
@@ -388,24 +568,31 @@ where
         let mut wake_tx = self.wake_channel.1.clone();
         tokio::spawn(async move {
             loop {
-                tokio::select! {
-                    Ok(()) =  wake_tx.changed() => self.execute().await?,
-                    _ = poll.tick() => self.execute().await?,
+                let outcome = tokio::select! {
+                    Ok(()) = wake_tx.changed() => self.execute().await,
+                    _ = poll.tick() => self.execute().await,
                     _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                 };
+                match outcome {
+                    ListenerExecutionControl::Continue => {}
+                    ListenerExecutionControl::Stop => break,
+                }
             }
+            Ok(())
         })
     }
 }
 
 #[async_trait]
-impl<L, QE, E, S> EventListenerExecutor<E> for PgEventListerExecutor<L, QE, E, S>
+impl<L, QE, E, S, R> EventListenerExecutor<E> for PgEventListerExecutor<L, QE, E, S, R>
 where
     E: Event + Clone + Sync + Send + 'static,
     S: Serde<E> + Clone + Send + Sync + 'static,
     QE: TryFrom<E> + Into<E> + Event + 'static + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: StdError + 'static + Send + Sync,
     L: EventListener<PgEventId, QE> + 'static,
+    R: Retry<L::Error> + Clone + Send + Sync + 'static,
+    L::Error: Send + Sync + 'static,
 {
     async fn init(&self) -> Result<(), Error> {
         let mut tx = self.event_store.pool.begin().await?;
@@ -430,13 +617,15 @@ where
     }
 }
 
-impl<L, QE, E, S> Clone for PgEventListerExecutor<L, QE, E, S>
+impl<L, QE, E, S, R> Clone for PgEventListerExecutor<L, QE, E, S, R>
 where
     QE: TryFrom<E> + Event + Send + Sync + Clone,
     <QE as TryFrom<E>>::Error: Send + Sync,
     E: Event + Clone + Sync + Send,
     S: Serde<E> + Clone + Send + Sync,
     L: EventListener<PgEventId, QE>,
+    R: Retry<L::Error> + Clone,
+    L::Error: Send + Sync + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -451,30 +640,17 @@ where
     }
 }
 
+/// Waker for executor, used to notify about new events matching a query.
 struct ExecutorWaker<E: Event + Clone> {
     wake_tx: watch::Sender<bool>,
     query: StreamQuery<PgEventId, E>,
 }
 
 impl<E: Event + Clone> ExecutorWaker<E> {
+    /// Wakes the executor if the event matches the query.
     fn wake(&self, event: &str) {
         if self.query.matches_event(event) {
             self.wake_tx.send_replace(true);
         }
     }
-}
-
-async fn setup(pool: &PgPool) -> Result<(), Error> {
-    sqlx::query(include_str!("listener/sql/table_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!("listener/sql/fn_notify_event_listener.sql"))
-        .execute(pool)
-        .await?;
-    sqlx::query(include_str!(
-        "listener/sql/trigger_notify_event_listener.sql"
-    ))
-    .execute(pool)
-    .await?;
-    Ok(())
 }

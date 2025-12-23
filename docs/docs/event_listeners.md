@@ -8,7 +8,7 @@ In event-sourced applications, deriving the state of the system directly from ev
 
 A Projection is a materialized view of the stream optimized for queries. So, it contains aggregate data that can be retrieved by a single SQL query.
 
-If you are building an event-driven application, you should also use an event listener to put events in a queue and integrate with other components in your system, such as email and report systems, or other applications. 
+If you are building an event-driven application, you should also use an event listener to put events in a queue and integrate with other components in your system, such as email and report systems, or other applications.
 Event listeners can also be employed to integrate components within the application. Traditionally, an event-sourced application involves policies and sagas between aggregates. Disintegrate takes this a step further by often allowing you to bypass complex policies and sagas between `Decision`s simply by querying all the needed events. However, in cases where such integration patterns are critical for reducing contention, Event Listeners can seamlessly step in to implement these components.
 
 In Disintegrate, Event Listeners are independent components that can be deployed along with the write side of your main application or in a standalone one. You can launch a new listener by defining a new `PgEventListener` as follows:

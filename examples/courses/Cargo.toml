@@ -8,33 +8,25 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-disintegrate = { version = "2.1.0", path = "../../disintegrate", features = [
-	"macros",
-	"serde-prost",
-] }
-disintegrate-postgres = { version = "2.1.0", path = "../../disintegrate-postgres", features = [
-	"listener",
-] }
-anyhow = "1.0.94"
-async-trait = "0.1.88"
-rust_decimal = "1.37.1"
+disintegrate = { version = "3.0.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
+disintegrate-postgres = { version = "3.0.0", path = "../../disintegrate-postgres", features = ["listener"] }
+anyhow = "1.0.100"
+async-trait = "0.1.89"
+rust_decimal = "1.39.0"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres"] }
-thiserror = "2.0.11"
-tokio = { version = "1.47.1", features = [
-	"macros",
-	"rt-multi-thread",
-	"signal",
-] }
-tonic = { version = "0.13.1", features = ["gzip", "transport"] }
-tonic-health = "0.13.1"
-tonic-reflection = "0.13.1"
+thiserror = "2.0.17"
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal"] }
+tonic = { version = "0.14.2", features = ["gzip", "transport"] }
+tonic-prost = "0.14.2"
+tonic-health = "0.14.2"
+tonic-reflection = "0.14.2"
 tower = "0.5.2"
-tower-http = { version = "0.6.6", features = ["trace"] }
-prost = { version = "0.13.5" }
+tower-http = { version = "0.6.8", features = ["trace"] }
+prost = { version = "0.14.1" }
 dotenv = "0.15.0"
-serde = "1.0.217"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.19"
+serde = "1.0.228"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.22"
 
 [build-dependencies]
-tonic-build = { version = "0.13.1", features = ["prost"] }
+tonic-prost-build = "0.14.2"

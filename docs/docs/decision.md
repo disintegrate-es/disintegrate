@@ -43,7 +43,7 @@ impl Decision for WithdrawAmount {
 
 ## Developing a new Decision
 
-Before implementing a Decision, it's advisable to start by writing tests. Disintegrate offers the TestHarness, a utility for writing tests in a given-when-then style. This tool assists you in defining the business logic of your application following a Test-Driven Development (TDD) approach:
+Before implementing a Decision, it's advisable to start by writing tests. Disintegrate offers the `TestHarness`, a utility for writing tests in a given-when-then style. This tool assists you in defining the business logic of your application following a Test-Driven Development (TDD) approach:
 
 ```rust
 #[test]

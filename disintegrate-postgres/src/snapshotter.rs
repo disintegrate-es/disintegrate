@@ -38,7 +38,7 @@ impl PgSnapshotter {
     /// # Returns
     ///
     /// A new `PgSnapshotter` instance.
-    pub async fn new(pool: PgPool, every: u64) -> Result<Self, Error> {
+    pub async fn try_new(pool: PgPool, every: u64) -> Result<Self, Error> {
         setup(&pool).await?;
         Ok(Self::new_uninitialized(pool, every))
     }

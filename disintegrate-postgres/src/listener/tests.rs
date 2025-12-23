@@ -64,7 +64,7 @@ struct CartEventPayload {
     quantity: i64,
 }
 
-#[derive(FromRow)]
+#[derive(FromRow, Debug)]
 struct Cart {
     cart_id: String,
     product_id: String,
@@ -136,7 +136,7 @@ impl EventListener<PgEventId, ShoppingCartEvent> for CartEventHandler {
 
 #[sqlx::test]
 async fn it_handles_events(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -165,7 +165,11 @@ async fn it_handles_events(pool: PgPool) {
         )
         .await
         .unwrap();
-    event_handler_executor.handle_events_from(0).await.unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    event_handler_executor
+        .handle_events_from(0, &mut tx)
+        .await
+        .unwrap();
 
     let carts = Cart::carts(&pool).await.unwrap();
     assert_eq!(carts.len(), 1);
@@ -177,7 +181,7 @@ async fn it_handles_events(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_runs_event_listeners(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )
@@ -221,7 +225,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
 #[sqlx::test]
 async fn it_runs_event_listener_with_db_listener(pool: PgPool) {
-    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::new(
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
         pool.clone(),
         Json::default(),
     )

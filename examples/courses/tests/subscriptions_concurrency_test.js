@@ -1,10 +1,12 @@
 import grpc from 'k6/net/grpc';
 import { check, sleep } from 'k6';
-import exec from 'k6/execution';
 
 const serverUrl = 'localhost:10437';
 const COURSES = 10;
 const USERS = 500;
+
+const COURSE_ID_PREFIX = 'course';
+const STUDENT_ID_PREFIX = 'student';
 
 export let options = {
     vus: USERS,
@@ -19,7 +21,7 @@ export function setup() {
     client.connect(serverUrl, { plaintext: true });
     for (let i = 1; i <= COURSES; i++) {
         const course = {
-            course_id: `course${i}`,
+            course_id: `${COURSE_ID_PREFIX}${i}`,
             name: 'Introduction to Programming',
             seats: 100,
         };
@@ -29,7 +31,7 @@ export function setup() {
     // Register students
     for (let i = 1; i <= USERS; i++) {
         const student = {
-            student_id: `student${i}`,
+            student_id: `${STUDENT_ID_PREFIX}${i}`,
             name: `Student ${i}`,
         };
         const res = client.invoke('api.Student/Register', student);
@@ -39,13 +41,13 @@ export function setup() {
 }
 
 // Each virtual user subscribes one specific student to the course
-export default function (data) {
+export default function(data) {
     client.connect(serverUrl, { plaintext: true });
     const course_id = Math.floor(Math.random() * COURSES) + 1;
     const student_id = Math.floor(Math.random() * USERS) + 1;
     const subscription = {
-        course_id: `course${course_id}`,
-        student_id: `student${student_id}`,
+        course_id: `${COURSE_ID_PREFIX}${course_id}`,
+        student_id: `${STUDENT_ID_PREFIX}${student_id}`,
     };
     const res = client.invoke('api.Subscription/Subscribe', subscription);
     check(res, { 'student subscribed successfully': (r) => r && r.status === grpc.StatusOK });

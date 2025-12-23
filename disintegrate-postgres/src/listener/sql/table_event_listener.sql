@@ -3,3 +3,4 @@ CREATE TABLE IF NOT EXISTS event_listener (
     last_processed_event_id BIGINT,
     updated_at TIMESTAMP DEFAULT now()
 );
+

@@ -1,9 +1,14 @@
 use std::error::Error as StdError;
 use thiserror::Error;
 
+use crate::migrator;
+
 /// Represents all the ways a method can fail within Disintegrate Postgres.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// Error returned from the migrator.
+    #[error(transparent)]
+    Migration(#[from] migrator::Error),
     /// Error returned from the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),

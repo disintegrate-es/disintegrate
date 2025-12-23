@@ -2,8 +2,11 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Ok, Result};
 use application::Application;
-use disintegrate::{serde::prost::Prost, WithSnapshot};
-use disintegrate_postgres::{PgEventListener, PgEventListenerConfig, PgEventStore, PgSnapshotter};
+use disintegrate::serde::prost::Prost;
+use disintegrate_postgres::{
+    decision_maker, PgEventListener, PgEventListenerConfig, PgEventListenerError, PgEventStore,
+    PgSnapshotter, RetryAction, WithPgSnapshot,
+};
 use sqlx::{postgres::PgConnectOptions, PgPool};
 use tokio::signal;
 use tracing_subscriber::{self, fmt::format::FmtSpan};
@@ -22,10 +25,9 @@ async fn main() -> Result<()> {
 
     let pool = PgPool::connect_with(PgConnectOptions::new()).await?;
     let serde = Prost::<DomainEvent, proto::Event>::default();
-    let event_store = PgEventStore::new(pool.clone(), serde).await?;
-    let snapshotter = PgSnapshotter::new(pool.clone(), 10).await?;
-    let decision_maker =
-        disintegrate_postgres::decision_maker(event_store.clone(), WithSnapshot::new(snapshotter));
+    let event_store = PgEventStore::try_new(pool.clone(), serde).await?;
+    let snapshotter = PgSnapshotter::try_new(pool.clone(), 10).await?;
+    let decision_maker = decision_maker(event_store.clone(), WithPgSnapshot::new(snapshotter));
 
     let read_model = read_model::Repository::new(pool.clone());
     let app = Application::new(decision_maker, read_model);
@@ -69,13 +71,23 @@ async fn grpc_server(app: Application) -> Result<()> {
 async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<()> {
     PgEventListener::builder(event_store)
         .register_listener(
-            read_model::ReadModelProjection::new(pool).await?,
-            PgEventListenerConfig::poller(Duration::from_secs(5)).with_notifier(),
+            read_model::ReadModelProjection::try_new(pool).await?,
+            PgEventListenerConfig::poller(Duration::from_secs(5))
+                .with_notifier()
+                .with_retry(handle_read_model_retry),
         )
         .start_with_shutdown(shutdown())
         .await
         .map_err(|e| anyhow!("event listener exited with error: {}", e))?;
     Ok(())
+}
+
+fn handle_read_model_retry(
+    error: PgEventListenerError<sqlx::Error>,
+    _attempts: usize,
+) -> RetryAction {
+    tracing::error!(?error, "read model listener failed");
+    RetryAction::Abort
 }
 
 async fn shutdown() {
