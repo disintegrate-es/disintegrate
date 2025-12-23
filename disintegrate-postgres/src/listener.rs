@@ -544,13 +544,13 @@ where
     }
 
     /// Executes the event handler with retry logic according to the configured policy.
-    async fn execute(&self) -> Result<ListenerExecutionOutcome, Error> {
+    async fn execute(&self) -> ListenerExecutionOutcome {
         let mut attempts = 0;
         loop {
             match self.try_execute().await {
-                Ok(_) => break Ok(ListenerExecutionOutcome::Continue),
+                Ok(_) => break ListenerExecutionOutcome::Continue,
                 Err(err) => match self.config.retry.retry(err, attempts) {
-                    RetryDecision::Abort => break Ok(ListenerExecutionOutcome::Stop),
+                    RetryDecision::Abort => break ListenerExecutionOutcome::Stop,
                     RetryDecision::Wait { duration } => {
                         attempts += 1;
                         tokio::time::sleep(duration).await;
@@ -569,8 +569,8 @@ where
         tokio::spawn(async move {
             loop {
                 let outcome = tokio::select! {
-                    Ok(()) = wake_tx.changed() => self.execute().await?,
-                    _ = poll.tick() => self.execute().await?,
+                    Ok(()) = wake_tx.changed() => self.execute().await,
+                    _ = poll.tick() => self.execute().await,
                     _ = shutdown.cancelled() => return Ok::<(), Error>(()),
                 };
                 match outcome {
