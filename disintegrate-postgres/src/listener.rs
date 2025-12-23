@@ -426,18 +426,14 @@ where
                     PgEventListenerErrorKind::FetchNextEvent {
                         last_processed_event_id,
                         ..
-                    },
-                ..
-            })
-            | Err(PgEventListenerError {
-                kind:
-                    PgEventListenerErrorKind::Handler {
+                    }
+                    | PgEventListenerErrorKind::Handler {
                         last_processed_event_id,
                         ..
                     },
                 ..
             }) => last_processed_event_id,
-            Err(e) => Err(e)?,
+            Err(e) => return Err(e),
         };
         sqlx::query(
             "UPDATE event_listener SET last_processed_event_id = $1, updated_at = now() WHERE id = $2",
@@ -461,7 +457,7 @@ where
                 },
                 listener_id: self.event_handler.id().to_string(),
             })?;
-        Ok(())
+        result.map(|_| ())
     }
 
     /// Handles events from the event store, starting from the given event ID.
@@ -541,6 +537,7 @@ where
         else {
             return Ok(()); // Another instance is processing
         };
+
         let result = self.handle_events_from(last_processed_id, &mut tx).await;
 
         self.release_listener(result, tx).await
