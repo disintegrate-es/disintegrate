@@ -3,7 +3,14 @@
 [![Docs](https://img.shields.io/badge/API-docs-blue.svg)](https://docs.rs/disintegrate)
 [![Github Pages](https://img.shields.io/badge/github%20pages-121013?logo=github&logoColor=white)](https://disintegrate-es.github.io/disintegrate/)
 
-Disintegrate is a Rust library that provides an alternative approach to building domain objects from an event stream. While supporting traditional aggregates, Disintegrate introduces a novel method that allows for more flexibility and adaptability in modeling business rules.
+Disintegrate is a Rust library for building event-sourced applications.
+
+In an event-sourced system, instead of storing only the current state of your application, you store every meaningful change as an event and use that log of events to reconstruct state when needed.
+
+Disintegrate lets you store events in a durable event store and use them to build the state of your application dynamically, loading only the events you need and applying them to reconstruct state on the fly.
+
+Traditionally with event sourcing you use aggregates (a DDD concept that groups related domain entities into a consistency boundary and enforces rules through a single root) to model and enforce business rules.
+Compared to aggregates, Disintegrate lets you query all relevant events first and then build whatever state you need to make a decision, rather than loading a fixed aggregate state first. This makes it easier to adapt to evolving business requirements and to compose multiple pieces of state for a decision.
 
 ## Why Disintegrate?
 
