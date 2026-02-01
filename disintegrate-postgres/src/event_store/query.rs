@@ -1,6 +1,7 @@
 use crate::PgEventId;
 use disintegrate::Event;
 use disintegrate::StreamQuery;
+use std::collections::HashMap;
 use std::fmt::Write;
 
 /// SQL Query Builder
@@ -66,32 +67,15 @@ where
 
                 // Process identifiers
                 let event_info = QE::SCHEMA.event_info(event).unwrap();
-                let mut event_identifiers = filter
+                let event_identifiers: HashMap<_, _> = filter
                     .identifiers()
                     .iter()
-                    .filter(|(ident, _)| event_info.has_domain_id(ident))
-                    .peekable();
+                    .filter(|(ident, _)| event_info.has_domain_identifier(ident))
+                    .collect();
 
-                if event_identifiers.peek().is_some() {
+                if !event_identifiers.is_empty() {
                     write!(self.builder, " AND ").unwrap();
-                }
-
-                while let Some((ident, value)) = event_identifiers.next() {
-                    write!(self.builder, "{} = ", ident).unwrap();
-                    match value {
-                        disintegrate::IdentifierValue::String(value) => {
-                            write!(self.builder, "'{}'", value).unwrap();
-                        }
-                        disintegrate::IdentifierValue::i64(value) => {
-                            write!(self.builder, "{}", value).unwrap();
-                        }
-                        disintegrate::IdentifierValue::Uuid(value) => {
-                            write!(self.builder, "'{}'", value).unwrap();
-                        }
-                    };
-                    if event_identifiers.peek().is_some() {
-                        write!(self.builder, " AND ").unwrap();
-                    }
+                    write!(self.builder, "domain_ids @> '{}'", serde_json::to_string(&event_identifiers).expect("to be a valid json")).unwrap();
                 }
 
                 self.builder.push(')');
@@ -182,7 +166,7 @@ mod tests {
 
         assert_eq!(
             criteria_builder.build(),
-            "((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value'))"
+            "((event_type = 'Bar') OR (event_type = 'Foo' AND domain_ids->'foo_id' = 'value'))"
         );
     }
 
@@ -193,7 +177,7 @@ mod tests {
 
         assert_eq!(
             criteria_builder.build(),
-            "((event_type = 'Bar' AND bar_id = 'value2') OR (event_type = 'Foo' AND foo_id = 'value'))"
+            "((event_type = 'Bar' AND domain_ids->'bar_id' = 'value2') OR (event_type = 'Foo' AND domain_ids->'foo_id' = 'value'))"
         );
     }
 
@@ -204,7 +188,7 @@ mod tests {
 
         assert_eq!(
             criteria_builder.build(),
-            "(event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value')))"
+            "(event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND domain_ids->'foo_id' = 'value')))"
         );
     }
 
@@ -216,7 +200,7 @@ mod tests {
 
         assert_eq!(
             criteria_builder.build(),
-            "((event_type = 'Bar' AND bar_id = 'value1') OR (event_type = 'Foo')) OR ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value2'))"
+            "((event_type = 'Bar' AND domain_ids->'bar_id' = 'value1') OR (event_type = 'Foo')) OR ((event_type = 'Bar') OR (event_type = 'Foo' AND domain_ids->'foo_id' = 'value2'))"
         );
     }
 

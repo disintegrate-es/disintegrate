@@ -17,13 +17,9 @@
         devShells.default = with pkgs; mkShell {
           buildInputs = [
             rust-bin.stable.latest.default
-            gcc
-            glibc.dev
-            gnumake
-            pkg-config
-            bison
-            perl
-            openssl
+            k6
+            protobuf_33
+            pgcli
           ];
         };
       }

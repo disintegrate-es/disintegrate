@@ -1,8 +1,9 @@
-use disintegrate::Event;
+use std::collections::BTreeSet;
+
+use disintegrate::{Event, Identifier};
 use disintegrate_serde::Serde;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
-use sqlx::types::Json;
 use sqlx::Postgres;
 
 /// SQL Insert Event Builder
@@ -42,18 +43,37 @@ where
         if self.events.is_empty() {
             panic!("Cannot build an insert query with no events");
         }
+
+        let mut all_identifiers: BTreeSet<Identifier> = BTreeSet::new();
+        for event in self.events.iter() {
+            all_identifiers.extend(event.domain_identifiers().keys());
+        }
+
         let mut separated_builder = self.builder.separated(",");
 
         separated_builder.push("event_type");
         separated_builder.push("payload");
-        separated_builder.push("domain_ids");
+        for ident in &all_identifiers {
+            separated_builder.push(ident);
+        }
 
         separated_builder.push_unseparated(") ");
 
         self.builder.push_values(self.events, |mut b, event| {
             b.push_bind(event.name());
             b.push_bind(self.serde.serialize(event.clone()));
-            b.push_bind(Json(event.domain_identifiers()));
+            let event_identifiers = event.domain_identifiers();
+            for ident in &all_identifiers {
+                if let Some(value) = event_identifiers.get(ident) {
+                    match value {
+                        disintegrate::IdentifierValue::String(value) => b.push_bind(value.clone()),
+                        disintegrate::IdentifierValue::i64(value) => b.push_bind(*value),
+                        disintegrate::IdentifierValue::Uuid(value) => b.push_bind(*value),
+                    };
+                } else {
+                    b.push("NULL");
+                }
+            }
         });
 
         self.builder.push(" RETURNING (event_id)");
@@ -64,7 +84,8 @@ where
 #[cfg(test)]
 mod tests {
     use disintegrate::{
-        domain_ids, ident, DomainIdInfo, DomainIdSet, EventInfo, EventSchema, IdentifierType,
+        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+        EventSchema, IdentifierType,
     };
     use serde::{Deserialize, Serialize};
     use sqlx::Execute;
@@ -92,19 +113,19 @@ mod tests {
             events_info: &[
                 &EventInfo {
                     name: "ShoppingCartAdded",
-                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
                 &EventInfo {
                     name: "ShoppingCartRemoved",
-                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
             ],
-            domain_ids: &[
-                &DomainIdInfo {
+            domain_identifiers: &[
+                &DomainIdentifierInfo {
                     ident: ident!(#cart_id),
                     type_info: IdentifierType::String,
                 },
-                &DomainIdInfo {
+                &DomainIdentifierInfo {
                     ident: ident!(#product_id),
                     type_info: IdentifierType::String,
                 },
@@ -116,18 +137,18 @@ mod tests {
                 ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
             }
         }
-        fn domain_ids(&self) -> DomainIdSet {
+        fn domain_identifiers(&self) -> DomainIdentifierSet {
             match self {
                 ShoppingCartEvent::Added {
                     product_id,
                     cart_id,
                     ..
-                } => domain_ids! {product_id: product_id, cart_id: cart_id},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
                 ShoppingCartEvent::Removed {
                     product_id,
                     cart_id,
                     ..
-                } => domain_ids! {product_id: product_id, cart_id: cart_id},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
             }
         }
     }

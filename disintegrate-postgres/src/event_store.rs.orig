@@ -58,12 +58,12 @@ where
     /// Creates a new instance of `PgEventStore`.
     ///
     /// This constructor does not initialize the database or add the
-    /// `domain_id` columns necessary for `disintegrate` to function properly.
+    /// `domain_identifier` columns necessary for `disintegrate` to function properly.
     /// If you need to initialize the database, use `PgEventStore::new` instead.
     ///
     /// If you plan to use this constructor, ensure that the `disintegrate` is
     /// properly initialized. Refer to the SQL files in the "event_store/sql" directory
-    /// to recreate the default structure. Additionally, all `domain_id` columns
+    /// to recreate the default structure. Additionally, all `domain_identifier` columns
     /// and their corresponding indexes must be created manually.
     ///
     /// # Arguments
@@ -222,13 +222,12 @@ where
             CriteriaBuilder::new(&query.change_origin(version)).build()
         ))
         .fetch_one(&mut *tx)
-        .await?
-        {
+        .await? {
             return Err(Error::Concurrency);
         }
 
-        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
-        let event_ids: Vec<PgEventId> = insert
+        let mut sequence_insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = sequence_insert
             .build()
             .fetch_all(&mut *tx)
             .await?
@@ -267,48 +266,8 @@ where
     {
         let mut tx = self.pool.begin().await?;
 
-        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
-        let event_ids: Vec<PgEventId> = insert
-            .build()
-            .fetch_all(&mut *tx)
-            .await?
-            .into_iter()
-            .map(|r| r.get(0))
-            .collect();
-
-        let persisted_events = event_ids
-            .iter()
-            .zip(events)
-            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
-            .collect::<Vec<_>>();
-
-        tx.commit().await.map_err(map_concurrency_err)?;
-
-        Ok(persisted_events)
-    }
-
-    /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying
-    /// whether new events have been added since the last read.
-    ///
-    /// # Arguments
-    ///
-    /// * `events` - A vector of events to be appended.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a vector of `PersistedEvent` representing the appended events,
-    /// or an error of type `Self::Error`.
-    async fn append_without_validation(
-        &self,
-        events: Vec<E>,
-    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
-    where
-        E: Clone + 'async_trait,
-    {
-        let mut tx = self.pool.begin().await?;
-
-        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
-        let event_ids: Vec<PgEventId> = insert
+        let mut sequence_insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = sequence_insert
             .build()
             .fetch_all(&mut *tx)
             .await?

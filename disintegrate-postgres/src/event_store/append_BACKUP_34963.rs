@@ -1,9 +1,15 @@
+<<<<<<< HEAD
+use std::collections::BTreeSet;
+
+use disintegrate::{Event, Identifier};
+=======
 use disintegrate::Event;
+>>>>>>> ebf68a3 (add gin index)
 use disintegrate_serde::Serde;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
-use sqlx::types::Json;
 use sqlx::Postgres;
+use sqlx::types::Json;
 
 /// SQL Insert Event Builder
 ///
@@ -53,7 +59,9 @@ where
         self.builder.push_values(self.events, |mut b, event| {
             b.push_bind(event.name());
             b.push_bind(self.serde.serialize(event.clone()));
-            b.push_bind(Json(event.domain_identifiers()));
+            b.push_bind(
+                Json(event.domain_identifiers()),
+            );
         });
 
         self.builder.push(" RETURNING (event_id)");
@@ -62,9 +70,11 @@ where
 }
 
 #[cfg(test)]
+<<<<<<< HEAD
 mod tests {
     use disintegrate::{
-        domain_ids, ident, DomainIdInfo, DomainIdSet, EventInfo, EventSchema, IdentifierType,
+        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+        EventSchema, IdentifierType,
     };
     use serde::{Deserialize, Serialize};
     use sqlx::Execute;
@@ -92,19 +102,19 @@ mod tests {
             events_info: &[
                 &EventInfo {
                     name: "ShoppingCartAdded",
-                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
                 &EventInfo {
                     name: "ShoppingCartRemoved",
-                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
             ],
-            domain_ids: &[
-                &DomainIdInfo {
+            domain_identifiers: &[
+                &DomainIdentifierInfo {
                     ident: ident!(#cart_id),
                     type_info: IdentifierType::String,
                 },
-                &DomainIdInfo {
+                &DomainIdentifierInfo {
                     ident: ident!(#product_id),
                     type_info: IdentifierType::String,
                 },
@@ -116,18 +126,18 @@ mod tests {
                 ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
             }
         }
-        fn domain_ids(&self) -> DomainIdSet {
+        fn domain_identifiers(&self) -> DomainIdentifierSet {
             match self {
                 ShoppingCartEvent::Added {
                     product_id,
                     cart_id,
                     ..
-                } => domain_ids! {product_id: product_id, cart_id: cart_id},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
                 ShoppingCartEvent::Removed {
                     product_id,
                     cart_id,
                     ..
-                } => domain_ids! {product_id: product_id, cart_id: cart_id},
+                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
             }
         }
     }
@@ -154,3 +164,6 @@ mod tests {
         );
     }
 }
+=======
+mod tests {}
+>>>>>>> ebf68a3 (add gin index)

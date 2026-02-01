@@ -35,6 +35,8 @@
 //!     println!("Identifier: {}, Value: {}", key, value);
 //! }
 //! ```
+use serde::Serialize;
+
 use crate::{Identifier, IdentifierValue};
 use std::{collections::BTreeMap, ops::Deref};
 
@@ -50,7 +52,7 @@ pub struct DomainId {
 /// A set of domain identifiers, represented as a map of `Identifier` keys and values.
 ///
 /// The `DomainIdSet` struct is used to store a collection of domain identifiers.
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Default, PartialEq, Eq, Clone)]
 pub struct DomainIdSet(BTreeMap<Identifier, IdentifierValue>);
 
 impl DomainIdSet {

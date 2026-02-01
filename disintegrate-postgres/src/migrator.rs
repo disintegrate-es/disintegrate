@@ -6,7 +6,7 @@
 //!
 //! The migrator is typically executed during application startup or via
 //! dedicated administrative tooling.
-use disintegrate::{DomainIdInfo, Event};
+use disintegrate::Event;
 use disintegrate_serde::Serde;
 
 use crate::PgEventStore;
@@ -43,26 +43,15 @@ where
 
     /// Init `PgEventStore` database
     pub async fn init_event_store(&self) -> Result<(), Error> {
-        const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
-
-        sqlx::query(include_str!("event_store/sql/seq_event_event_id.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
         sqlx::query(include_str!("event_store/sql/table_event.sql"))
             .execute(&self.event_store.pool)
             .await?;
         sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
             .execute(&self.event_store.pool)
             .await?;
-        for domain_id in E::SCHEMA.domain_ids {
-            if RESERVED_NAMES.contains(&domain_id.ident) {
-                panic!(
-                    "Domain id name {domain_id} is reserved. Please use a different name.",
-                    domain_id = domain_id.ident
-                );
-            }
-            self.add_domain_id_column("event", domain_id).await?;
-        }
+        sqlx::query(include_str!("event_store/sql/idx_domain_ids.sql"))
+            .execute(&self.event_store.pool)
+            .await?;
         Ok(())
     }
 
