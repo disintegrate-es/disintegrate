@@ -118,13 +118,15 @@ where
             let mut epoch_id: PgEventId = 0;
             while let Some(row) = rows.next().await {
                 let row = row?;
-                let event_id = row.get(0);
+                let event_id: Option<i64> = row.get(0);
                 epoch_id = row.get(2);
-                let payload = self.serde.deserialize(row.get(1))?;
-                let payload: QE = payload
+                if let Some(event_id) = event_id {
+                    let payload = self.serde.deserialize(row.get(1))?;
+                    let payload: QE = payload
                         .try_into()
                         .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
-                yield Ok(StreamItem::Event(PersistedEvent::new(event_id, payload)));
+                    yield Ok(StreamItem::Event(PersistedEvent::new(event_id, payload)));
+                }
             }
             yield Ok(StreamItem::End(epoch_id));
         }
@@ -257,6 +259,46 @@ where
 
         let mut insert = InsertEventsBuilder::new(&events, &self.serde);
         let event_ids: Vec<PgEventId> = insert
+            .build()
+            .fetch_all(&mut *tx)
+            .await?
+            .into_iter()
+            .map(|r| r.get(0))
+            .collect();
+
+        let persisted_events = event_ids
+            .iter()
+            .zip(events)
+            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
+            .collect::<Vec<_>>();
+
+        tx.commit().await.map_err(map_concurrency_err)?;
+
+        Ok(persisted_events)
+    }
+
+    /// Appends a batch of events to the PostgreSQL-backed event store **without** verifying
+    /// whether new events have been added since the last read.
+    ///
+    /// # Arguments
+    ///
+    /// * `events` - A vector of events to be appended.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of `PersistedEvent` representing the appended events,
+    /// or an error of type `Self::Error`.
+    async fn append_without_validation(
+        &self,
+        events: Vec<E>,
+    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Self::Error>
+    where
+        E: Clone + 'async_trait,
+    {
+        let mut tx = self.pool.begin().await?;
+
+        let mut sequence_insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = sequence_insert
             .build()
             .fetch_all(&mut *tx)
             .await?
