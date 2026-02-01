@@ -297,8 +297,8 @@ where
     {
         let mut tx = self.pool.begin().await?;
 
-        let mut sequence_insert = InsertEventsBuilder::new(&events, &self.serde);
-        let event_ids: Vec<PgEventId> = sequence_insert
+        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = insert
             .build()
             .fetch_all(&mut *tx)
             .await?
