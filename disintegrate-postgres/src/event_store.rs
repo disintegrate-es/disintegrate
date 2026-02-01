@@ -206,16 +206,6 @@ where
         sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
             .await?;
-<<<<<<< HEAD
-=======
-        let inv_events: i64 = sqlx::query_scalar(&format!(
-            "SELECT count(*) FROM event WHERE {}",
-            CriteriaBuilder::new(&query.change_origin(version)).build()
-        ))
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(map_concurrency_err)?;
->>>>>>> ebf68a3 (add gin index)
 
         if sqlx::query_scalar(&format!(
             "SELECT EXISTS (SELECT 1 FROM event WHERE {})",
