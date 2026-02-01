@@ -69,29 +69,6 @@ where
     where
         E: Clone + 'async_trait,
         QE: Event + 'static + Clone + Send + Sync;
-
-    /// Appends a batch of events to the event store **without** verifying if
-    /// new events have been added since the last read.
-    ///
-    /// This method is useful when you are certain that no other process
-    /// has modified the event store in a way that would make your logic stale.
-    ///
-    /// If you need to guarantee that no duplicate events are added,
-    /// use the `append` method instead, providing a query that ensures uniqueness.
-    ///
-    /// # Arguments
-    ///
-    /// * `events` - A vector of events to append to the event store.
-    ///
-    ///# Returns
-    ///
-    /// A `Result` containing a vector of `PersistedEvent` representing the appended events, or an error.
-    async fn append_without_validation(
-        &self,
-        events: Vec<E>,
-    ) -> Result<Vec<PersistedEvent<ID, E>>, Self::Error>
-    where
-        E: Clone + 'async_trait;
 }
 
 /// An item in the event stream.

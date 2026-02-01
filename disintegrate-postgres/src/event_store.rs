@@ -118,15 +118,13 @@ where
             let mut epoch_id: PgEventId = 0;
             while let Some(row) = rows.next().await {
                 let row = row?;
-                let event_id: Option<i64> = row.get(0);
+                let event_id = row.get(0);
                 epoch_id = row.get(2);
-                if let Some(event_id) = event_id {
-                    let payload = self.serde.deserialize(row.get(1))?;
-                    let payload: QE = payload
+                let payload = self.serde.deserialize(row.get(1))?;
+                let payload: QE = payload
                         .try_into()
                         .map_err(|e| Error::QueryEventMapping(Box::new(e)))?;
-                    yield Ok(StreamItem::Event(PersistedEvent::new(event_id, payload)));
-                }
+                yield Ok(StreamItem::Event(PersistedEvent::new(event_id, payload)));
             }
             yield Ok(StreamItem::End(epoch_id));
         }
