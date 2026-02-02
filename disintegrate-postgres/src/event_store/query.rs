@@ -120,8 +120,8 @@ where
 mod tests {
     use super::*;
     use disintegrate::{
-        domain_ids, event_types, ident, query, DomainIdInfo, DomainIdSet,
-        Event, EventInfo, EventSchema, IdentifierType,
+        domain_ids, event_types, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo,
+        EventSchema, IdentifierType,
     };
 
     #[allow(dead_code)]

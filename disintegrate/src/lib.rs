@@ -17,9 +17,7 @@ pub use crate::decision::{Decision, DecisionMaker, Error as DecisionError, Persi
 #[doc(inline)]
 pub use crate::domain_id::{DomainId, DomainIdSet};
 #[doc(inline)]
-pub use crate::event::{
-    DomainIdInfo, Event, EventId, EventInfo, EventSchema, PersistedEvent,
-};
+pub use crate::event::{DomainIdInfo, Event, EventId, EventInfo, EventSchema, PersistedEvent};
 #[doc(inline)]
 pub use crate::event_store::{EventStore, StreamItem};
 #[doc(inline)]
@@ -62,7 +60,7 @@ pub mod serde {
     #[doc(inline)]
     pub use disintegrate_serde::serde::protobuf;
     #[doc(inline)]
-    pub use disintegrate_serde::{Deserializer, Serde, Serializer, Error};
+    pub use disintegrate_serde::{Deserializer, Error, Serde, Serializer};
 }
 
 #[doc(hidden)]

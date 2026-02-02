@@ -1,6 +1,6 @@
 use disintegrate::{
-    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventId,
-    EventInfo, EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventId, EventInfo, EventSchema,
+    IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
 };
 use disintegrate_serde::{serde::json::Json, Deserializer};
 use serde::Deserialize;

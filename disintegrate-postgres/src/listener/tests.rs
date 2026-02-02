@@ -2,8 +2,8 @@ use super::*;
 
 use async_trait::async_trait;
 use disintegrate::{
-    domain_ids, ident, query, DomainIdInfo, DomainIdSet, EventInfo,
-    EventSchema, EventStore, IdentifierType, PersistedEvent, StreamQuery,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, EventInfo, EventSchema, EventStore,
+    IdentifierType, PersistedEvent, StreamQuery,
 };
 use disintegrate_serde::serde::json::Json;
 

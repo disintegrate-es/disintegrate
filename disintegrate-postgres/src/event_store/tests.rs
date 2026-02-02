@@ -1,8 +1,8 @@
 use super::append::InsertEventsBuilder;
 use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
-    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo,
-    EventSchema, EventStore, IdentifierType,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo, EventSchema, EventStore,
+    IdentifierType,
 };
 use disintegrate_serde::serde::json::Json;
 use disintegrate_serde::Deserializer;

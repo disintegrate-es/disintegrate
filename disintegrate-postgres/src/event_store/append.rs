@@ -84,8 +84,7 @@ where
 #[cfg(test)]
 mod tests {
     use disintegrate::{
-        domain_ids, ident, DomainIdInfo, DomainIdSet, EventInfo,
-        EventSchema, IdentifierType,
+        domain_ids, ident, DomainIdInfo, DomainIdSet, EventInfo, EventSchema, IdentifierType,
     };
     use serde::{Deserialize, Serialize};
     use sqlx::Execute;

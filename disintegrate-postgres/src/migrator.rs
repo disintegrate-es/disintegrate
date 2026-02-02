@@ -56,10 +56,12 @@ where
             .await?;
         for domain_id in E::SCHEMA.domain_ids {
             if RESERVED_NAMES.contains(&domain_id.ident) {
-                panic!("Domain identifier name {domain_id} is reserved. Please use a different name.", domain_id = domain_id.ident);
+                panic!(
+                    "Domain id name {domain_id} is reserved. Please use a different name.",
+                    domain_id = domain_id.ident
+                );
             }
-            self.add_domain_id_column("event", domain_id)
-                .await?;
+            self.add_domain_id_column("event", domain_id).await?;
         }
         Ok(())
     }
