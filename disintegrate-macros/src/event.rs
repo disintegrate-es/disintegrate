@@ -60,11 +60,12 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
         let event_type = &variant.ident;
 
         match &variant.fields {
-            Fields::Unnamed(_fields) => quote!{
+            Fields::Unnamed(_fields) => quote! {
                   #name::#event_type(payload) => payload.domain_ids(),
             },
             Fields::Named(fields) => {
-                let identifiers_fields : Vec<_> = fields.named
+                let identifiers_fields: Vec<_> = fields
+                    .named
                     .iter()
                     .filter(|f| f.attrs.iter().any(|attr| attr.path() == ID))
                     .flat_map(|f| f.ident.as_ref())
@@ -77,12 +78,11 @@ fn impl_enum(ast: &DeriveInput, data: &DataEnum) -> Result<TokenStream> {
                         disintegrate::domain_ids!{#(#identifiers_fields: #identifiers_fields),*}
                     },
                 }
-            },
+            }
             Fields::Unit => quote! {
                      #name::#event_type => disintegrate::domain_ids!{},
-            }
+            },
         }
-
     });
 
     let domain_ids_slice =
