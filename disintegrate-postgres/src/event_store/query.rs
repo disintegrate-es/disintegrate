@@ -69,7 +69,7 @@ where
                 let mut event_identifiers = filter
                     .identifiers()
                     .iter()
-                    .filter(|(ident, _)| event_info.has_domain_identifier(ident))
+                    .filter(|(ident, _)| event_info.has_domain_id(ident))
                     .peekable();
 
                 if event_identifiers.peek().is_some() {
@@ -120,7 +120,7 @@ where
 mod tests {
     use super::*;
     use disintegrate::{
-        domain_identifiers, event_types, ident, query, DomainIdentifierInfo, DomainIdentifierSet,
+        domain_ids, event_types, ident, query, DomainIdInfo, DomainIdSet,
         Event, EventInfo, EventSchema, IdentifierType,
     };
 
@@ -137,19 +137,19 @@ mod tests {
             events_info: &[
                 &EventInfo {
                     name: "Bar",
-                    domain_identifiers: &[&ident!(#bar_id)],
+                    domain_ids: &[&ident!(#bar_id)],
                 },
                 &EventInfo {
                     name: "Foo",
-                    domain_identifiers: &[&ident!(#foo_id)],
+                    domain_ids: &[&ident!(#foo_id)],
                 },
             ],
-            domain_identifiers: &[
-                &DomainIdentifierInfo {
+            domain_ids: &[
+                &DomainIdInfo {
                     ident: ident!(#foo_id),
                     type_info: IdentifierType::String,
                 },
-                &DomainIdentifierInfo {
+                &DomainIdInfo {
                     ident: ident!(#bar_id),
                     type_info: IdentifierType::String,
                 },
@@ -159,8 +159,8 @@ mod tests {
         fn name(&self) -> &'static str {
             ""
         }
-        fn domain_identifiers(&self) -> DomainIdentifierSet {
-            domain_identifiers! {}
+        fn domain_ids(&self) -> DomainIdSet {
+            domain_ids! {}
         }
     }
 

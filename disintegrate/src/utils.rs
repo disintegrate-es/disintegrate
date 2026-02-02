@@ -213,9 +213,9 @@ pub mod tests {
     use std::{error::Error as StdError, fmt};
 
     use crate::{
-        domain_identifiers,
-        event::{DomainIdentifierInfo, EventInfo},
-        ident, query, BoxDynError, Decision, DomainIdentifierSet, Event, EventSchema, EventStore,
+        domain_ids,
+        event::{DomainIdInfo, EventInfo},
+        ident, query, BoxDynError, Decision, DomainIdSet, Event, EventSchema, EventStore,
         IdentifierType, PersistedEvent, StateMutate, StatePart, StateQuery, StateSnapshotter,
         StreamQuery,
     };
@@ -258,19 +258,19 @@ pub mod tests {
             events_info: &[
                 &EventInfo {
                     name: "ItemAdded",
-                    domain_identifiers: &[&ident!(#item_id), &ident!(#cart_id)],
+                    domain_ids: &[&ident!(#item_id), &ident!(#cart_id)],
                 },
                 &EventInfo {
                     name: "ItemRemoved",
-                    domain_identifiers: &[&ident!(#item_id), &ident!(#cart_id)],
+                    domain_ids: &[&ident!(#item_id), &ident!(#cart_id)],
                 },
             ],
-            domain_identifiers: &[
-                &DomainIdentifierInfo {
+            domain_ids: &[
+                &DomainIdInfo {
                     ident: ident!(#cart_id),
                     type_info: IdentifierType::String,
                 },
-                &DomainIdentifierInfo {
+                &DomainIdInfo {
                     ident: ident!(#item_id),
                     type_info: IdentifierType::String,
                 },
@@ -282,14 +282,14 @@ pub mod tests {
                 ShoppingCartEvent::ItemRemoved { .. } => "ItemRemoved",
             }
         }
-        fn domain_identifiers(&self) -> DomainIdentifierSet {
+        fn domain_ids(&self) -> DomainIdSet {
             match self {
                 ShoppingCartEvent::ItemAdded {
                     item_id, cart_id, ..
-                } => domain_identifiers! {item_id: item_id, cart_id: cart_id},
+                } => domain_ids! {item_id: item_id, cart_id: cart_id},
                 ShoppingCartEvent::ItemRemoved {
                     item_id, cart_id, ..
-                } => domain_identifiers! {item_id: item_id, cart_id: cart_id},
+                } => domain_ids! {item_id: item_id, cart_id: cart_id},
             }
         }
     }

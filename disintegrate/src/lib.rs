@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod decision;
-mod domain_identifier;
+mod domain_id;
 mod event;
 mod event_store;
 mod identifier;
@@ -15,10 +15,10 @@ pub mod utils;
 #[doc(inline)]
 pub use crate::decision::{Decision, DecisionMaker, Error as DecisionError, PersistDecision};
 #[doc(inline)]
-pub use crate::domain_identifier::{DomainIdentifier, DomainIdentifierSet};
+pub use crate::domain_id::{DomainId, DomainIdSet};
 #[doc(inline)]
 pub use crate::event::{
-    DomainIdentifierInfo, Event, EventId, EventInfo, EventSchema, PersistedEvent,
+    DomainIdInfo, Event, EventId, EventInfo, EventSchema, PersistedEvent,
 };
 #[doc(inline)]
 pub use crate::event_store::{EventStore, StreamItem};
@@ -62,7 +62,7 @@ pub mod serde {
     #[doc(inline)]
     pub use disintegrate_serde::serde::protobuf;
     #[doc(inline)]
-    pub use disintegrate_serde::{Deserializer, Serde, Serializer};
+    pub use disintegrate_serde::{Deserializer, Serde, Serializer, Error};
 }
 
 #[doc(hidden)]

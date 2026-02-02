@@ -1,7 +1,7 @@
 use super::append::InsertEventsBuilder;
 use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo,
     EventSchema, EventStore, IdentifierType,
 };
 use disintegrate_serde::serde::json::Json;
@@ -37,19 +37,19 @@ impl Event for ShoppingCartEvent {
         events_info: &[
             &EventInfo {
                 name: "ShoppingCartAdded",
-                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
             },
             &EventInfo {
                 name: "ShoppingCartRemoved",
-                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
             },
         ],
-        domain_identifiers: &[
-            &DomainIdentifierInfo {
+        domain_ids: &[
+            &DomainIdInfo {
                 ident: ident!(#cart_id),
                 type_info: IdentifierType::String,
             },
-            &DomainIdentifierInfo {
+            &DomainIdInfo {
                 ident: ident!(#product_id),
                 type_info: IdentifierType::String,
             },
@@ -61,18 +61,18 @@ impl Event for ShoppingCartEvent {
             ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
         }
     }
-    fn domain_identifiers(&self) -> DomainIdentifierSet {
+    fn domain_ids(&self) -> DomainIdSet {
         match self {
             ShoppingCartEvent::Added {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+            } => domain_ids! {product_id: product_id, cart_id: cart_id},
             ShoppingCartEvent::Removed {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+            } => domain_ids! {product_id: product_id, cart_id: cart_id},
         }
     }
 }

@@ -6,7 +6,7 @@
 //!
 //! The migrator is typically executed during application startup or via
 //! dedicated administrative tooling.
-use disintegrate::{DomainIdentifierInfo, Event};
+use disintegrate::{DomainIdInfo, Event};
 use disintegrate_serde::Serde;
 
 use crate::PgEventStore;
@@ -54,11 +54,11 @@ where
         sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
             .execute(&self.event_store.pool)
             .await?;
-        for domain_identifier in E::SCHEMA.domain_identifiers {
-            if RESERVED_NAMES.contains(&domain_identifier.ident) {
-                panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.", domain_identifier = domain_identifier.ident);
+        for domain_id in E::SCHEMA.domain_ids {
+            if RESERVED_NAMES.contains(&domain_id.ident) {
+                panic!("Domain identifier name {domain_id} is reserved. Please use a different name.", domain_id = domain_id.ident);
             }
-            self.add_domain_identifier_column("event", domain_identifier)
+            self.add_domain_id_column("event", domain_id)
                 .await?;
         }
         Ok(())
@@ -91,8 +91,8 @@ where
         self.migrate_hash_index_to_btree("idx_events_type", "event", "event_type")
             .await?;
 
-        for domain_identifier in E::SCHEMA.domain_identifiers {
-            let column_name = domain_identifier.ident;
+        for domain_id in E::SCHEMA.domain_ids {
+            let column_name = domain_id.ident;
 
             self.migrate_hash_index_to_btree(
                 &format!("idx_event_{column_name}"),
@@ -125,13 +125,13 @@ where
         Ok(())
     }
 
-    async fn add_domain_identifier_column(
+    async fn add_domain_id_column(
         &self,
         table: &str,
-        domain_identifier: &DomainIdentifierInfo,
+        domain_id: &DomainIdInfo,
     ) -> Result<(), Error> {
-        let column_name = domain_identifier.ident;
-        let sql_type = match domain_identifier.type_info {
+        let column_name = domain_id.ident;
+        let sql_type = match domain_id.type_info {
             disintegrate::IdentifierType::String => "TEXT",
             disintegrate::IdentifierType::i64 => "BIGINT",
             disintegrate::IdentifierType::Uuid => "UUID",

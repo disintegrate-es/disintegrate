@@ -46,7 +46,7 @@ where
 
         let mut all_identifiers: BTreeSet<Identifier> = BTreeSet::new();
         for event in self.events.iter() {
-            all_identifiers.extend(event.domain_identifiers().keys());
+            all_identifiers.extend(event.domain_ids().keys());
         }
 
         let mut separated_builder = self.builder.separated(",");
@@ -62,7 +62,7 @@ where
         self.builder.push_values(self.events, |mut b, event| {
             b.push_bind(event.name());
             b.push_bind(self.serde.serialize(event.clone()));
-            let event_identifiers = event.domain_identifiers();
+            let event_identifiers = event.domain_ids();
             for ident in &all_identifiers {
                 if let Some(value) = event_identifiers.get(ident) {
                     match value {
@@ -84,7 +84,7 @@ where
 #[cfg(test)]
 mod tests {
     use disintegrate::{
-        domain_identifiers, ident, DomainIdentifierInfo, DomainIdentifierSet, EventInfo,
+        domain_ids, ident, DomainIdInfo, DomainIdSet, EventInfo,
         EventSchema, IdentifierType,
     };
     use serde::{Deserialize, Serialize};
@@ -113,19 +113,19 @@ mod tests {
             events_info: &[
                 &EventInfo {
                     name: "ShoppingCartAdded",
-                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
                 &EventInfo {
                     name: "ShoppingCartRemoved",
-                    domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                    domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
                 },
             ],
-            domain_identifiers: &[
-                &DomainIdentifierInfo {
+            domain_ids: &[
+                &DomainIdInfo {
                     ident: ident!(#cart_id),
                     type_info: IdentifierType::String,
                 },
-                &DomainIdentifierInfo {
+                &DomainIdInfo {
                     ident: ident!(#product_id),
                     type_info: IdentifierType::String,
                 },
@@ -137,18 +137,18 @@ mod tests {
                 ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
             }
         }
-        fn domain_identifiers(&self) -> DomainIdentifierSet {
+        fn domain_ids(&self) -> DomainIdSet {
             match self {
                 ShoppingCartEvent::Added {
                     product_id,
                     cart_id,
                     ..
-                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+                } => domain_ids! {product_id: product_id, cart_id: cart_id},
                 ShoppingCartEvent::Removed {
                     product_id,
                     cart_id,
                     ..
-                } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+                } => domain_ids! {product_id: product_id, cart_id: cart_id},
             }
         }
     }

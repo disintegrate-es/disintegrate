@@ -1,5 +1,5 @@
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventId,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventId,
     EventInfo, EventSchema, IdentifierType, IntoState, IntoStatePart, PersistedEvent, StateMutate,
 };
 use disintegrate_serde::{serde::json::Json, Deserializer};
@@ -19,14 +19,14 @@ impl Event for CartEvent {
         events: &["CartEventItemAdded"],
         events_info: &[&EventInfo {
             name: "CartProductAdded",
-            domain_identifiers: &[&ident!(#cart_id), &ident!(#product_id)],
+            domain_ids: &[&ident!(#cart_id), &ident!(#product_id)],
         }],
-        domain_identifiers: &[
-            &DomainIdentifierInfo {
+        domain_ids: &[
+            &DomainIdInfo {
                 ident: ident!(#cart_id),
                 type_info: IdentifierType::String,
             },
-            &DomainIdentifierInfo {
+            &DomainIdInfo {
                 ident: ident!(#product_id),
                 type_info: IdentifierType::String,
             },
@@ -37,11 +37,11 @@ impl Event for CartEvent {
             CartEvent::ItemAdded { .. } => "CartProductAdded",
         }
     }
-    fn domain_identifiers(&self) -> DomainIdentifierSet {
+    fn domain_ids(&self) -> DomainIdSet {
         match self {
             CartEvent::ItemAdded {
                 item_id, cart_id, ..
-            } => domain_identifiers! {item_id: item_id, cart_id: cart_id},
+            } => domain_ids! {item_id: item_id, cart_id: cart_id},
         }
     }
 }

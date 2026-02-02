@@ -5,7 +5,7 @@
 //!
 //! The PersistedEvent struct wraps an event and contains an ID assigned by the event store. It represents
 //! an event that has been persisted in the event store.
-use crate::{domain_identifier::DomainIdentifierSet, Identifier, IdentifierType};
+use crate::{domain_id::DomainIdSet, Identifier, IdentifierType};
 use std::ops::Deref;
 
 /// Represents the ID of an event.
@@ -27,19 +27,19 @@ pub struct EventInfo {
     /// The name of the event.
     pub name: &'static str,
     /// The domain identifiers associated with the event.
-    pub domain_identifiers: &'static [&'static Identifier],
+    pub domain_ids: &'static [&'static Identifier],
 }
 
 impl EventInfo {
     /// Returns true if the event has the given domain identifier.
-    pub fn has_domain_identifier(&self, ident: &Identifier) -> bool {
-        self.domain_identifiers.contains(&ident)
+    pub fn has_domain_id(&self, ident: &Identifier) -> bool {
+        self.domain_ids.contains(&ident)
     }
 }
 
 /// Represents the domain identifier and its type.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct DomainIdentifierInfo {
+pub struct DomainIdInfo {
     /// The domain identifier.
     pub ident: Identifier,
     /// The type of the domain identifier.
@@ -54,7 +54,7 @@ pub struct DomainIdentifierInfo {
 pub struct EventSchema {
     pub events: &'static [&'static str],
     pub events_info: &'static [&'static EventInfo],
-    pub domain_identifiers: &'static [&'static DomainIdentifierInfo],
+    pub domain_ids: &'static [&'static DomainIdInfo],
 }
 
 impl EventSchema {
@@ -75,7 +75,7 @@ pub trait Event {
     /// Returns the schema of all supported events.
     const SCHEMA: EventSchema;
     /// Retrieves the domain identifiers associated with the event.
-    fn domain_identifiers(&self) -> DomainIdentifierSet;
+    fn domain_ids(&self) -> DomainIdSet;
     /// Retrieves the name of the event.
     fn name(&self) -> &'static str;
 }

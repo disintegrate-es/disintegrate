@@ -1,4 +1,4 @@
-use disintegrate::{ident, DomainIdentifierInfo, Event, IdentifierType, IntoIdentifierValue};
+use disintegrate::{ident, DomainIdInfo, Event, IdentifierType, IntoIdentifierValue};
 
 #[derive(Event, Clone, Debug, PartialEq, Eq)]
 struct UserUpdatedData {
@@ -54,7 +54,7 @@ fn it_correctly_sets_event_names() {
 }
 
 #[test]
-fn it_returns_correct_domain_identifiers() {
+fn it_returns_correct_domain_ids() {
     let user_id = "user123".to_string();
     let enum_struct_variant_event = DomainEvent::UserCreated {
         user_id: user_id.clone(),
@@ -62,9 +62,9 @@ fn it_returns_correct_domain_identifiers() {
         email: "john@example.com".to_string(),
     };
 
-    let domain_identifiers = enum_struct_variant_event.domain_identifiers();
+    let domain_ids = enum_struct_variant_event.domain_ids();
     assert_eq!(
-        domain_identifiers.get(&ident!(#user_id)),
+        domain_ids.get(&ident!(#user_id)),
         Some(&user_id.clone().into_identifier_value())
     );
 
@@ -73,9 +73,9 @@ fn it_returns_correct_domain_identifiers() {
         email: "john@example.com".to_string(),
     });
 
-    let domain_identifiers = enum_unit_variant_event.domain_identifiers();
+    let domain_ids = enum_unit_variant_event.domain_ids();
     assert_eq!(
-        domain_identifiers.get(&ident!(#user_id)),
+        domain_ids.get(&ident!(#user_id)),
         Some(&user_id.clone().into_identifier_value())
     );
 
@@ -83,16 +83,16 @@ fn it_returns_correct_domain_identifiers() {
         user_id: user_id.clone(),
     }));
 
-    let domain_identifiers = enum_boxed_variant_event.domain_identifiers();
+    let domain_ids = enum_boxed_variant_event.domain_ids();
     assert_eq!(
-        domain_identifiers.get(&ident!(#user_id)),
+        domain_ids.get(&ident!(#user_id)),
         Some(&user_id.into_identifier_value())
     );
 
     let enum_unit_variant_event = DomainEvent::UserChanged;
 
-    let domain_identifiers = enum_unit_variant_event.domain_identifiers();
-    assert!(domain_identifiers.is_empty());
+    let domain_ids = enum_unit_variant_event.domain_ids();
+    assert!(domain_ids.is_empty());
 }
 
 #[test]
@@ -150,31 +150,31 @@ fn it_generates_event_streams() {
 }
 
 #[test]
-fn it_generates_domain_identifiers_schema_set() {
+fn it_generates_domain_ids_schema_set() {
     assert_eq!(
-        OrderEvent::SCHEMA.domain_identifiers,
-        &[&DomainIdentifierInfo {
+        OrderEvent::SCHEMA.domain_ids,
+        &[&DomainIdInfo {
             ident: ident!(#order_id),
             type_info: IdentifierType::String
         }]
     );
 
     assert_eq!(
-        UserEvent::SCHEMA.domain_identifiers,
-        &[&DomainIdentifierInfo {
+        UserEvent::SCHEMA.domain_ids,
+        &[&DomainIdInfo {
             ident: ident!(#user_id),
             type_info: IdentifierType::String
         }]
     );
 
     assert_eq!(
-        DomainEvent::SCHEMA.domain_identifiers,
+        DomainEvent::SCHEMA.domain_ids,
         &[
-            &DomainIdentifierInfo {
+            &DomainIdInfo {
                 ident: ident!(#order_id),
                 type_info: IdentifierType::String
             },
-            &DomainIdentifierInfo {
+            &DomainIdInfo {
                 ident: ident!(#user_id),
                 type_info: IdentifierType::String
             }

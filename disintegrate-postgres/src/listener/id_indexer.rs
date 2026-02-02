@@ -2,7 +2,7 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 
 use async_trait::async_trait;
-use disintegrate::{DomainIdentifierSet, Event, EventListener, PersistedEvent, StreamQuery};
+use disintegrate::{DomainIdSet, Event, EventListener, PersistedEvent, StreamQuery};
 use sqlx::{PgPool, Postgres};
 
 use crate::PgEventId;
@@ -120,7 +120,7 @@ impl<E: Event + Clone + Send + Sync> EventListener<PgEventId, E> for PgIdIndexer
     }
 
     async fn handle(&self, event: PersistedEvent<PgEventId, E>) -> Result<(), Self::Error> {
-        let mut query_builder = sql_builder(event.id(), event.domain_identifiers());
+        let mut query_builder = sql_builder(event.id(), event.domain_ids());
         query_builder.build().execute(&self.pool).await?;
         Ok(())
     }
@@ -128,12 +128,12 @@ impl<E: Event + Clone + Send + Sync> EventListener<PgEventId, E> for PgIdIndexer
 
 fn sql_builder(
     event_id: PgEventId,
-    domain_identifiers: DomainIdentifierSet,
+    domain_ids: DomainIdSet,
 ) -> sqlx::QueryBuilder<'static, Postgres> {
-    let domain_identifiers = <BTreeMap<_, _> as Clone>::clone(&domain_identifiers).into_iter();
+    let domain_ids = <BTreeMap<_, _> as Clone>::clone(&domain_ids).into_iter();
     let mut sql_builder = sqlx::QueryBuilder::new("UPDATE event SET ");
     let mut separated = sql_builder.separated(",");
-    for (id_name, id_value) in domain_identifiers {
+    for (id_name, id_value) in domain_ids {
         separated.push(format!("{id_name} = "));
 
         match id_value {
@@ -153,11 +153,11 @@ fn sql_builder(
 #[cfg(test)]
 mod test {
     use super::sql_builder;
-    use disintegrate::domain_identifiers;
+    use disintegrate::domain_ids;
 
     #[test]
     fn it_builds_event_update() {
-        let ids = domain_identifiers! {cart_id: "cart1", product_id: 1, customer_id: 2};
+        let ids = domain_ids! {cart_id: "cart1", product_id: 1, customer_id: 2};
 
         let builder = sql_builder(1, ids);
 

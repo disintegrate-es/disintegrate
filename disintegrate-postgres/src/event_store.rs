@@ -58,12 +58,12 @@ where
     /// Creates a new instance of `PgEventStore`.
     ///
     /// This constructor does not initialize the database or add the
-    /// `domain_identifier` columns necessary for `disintegrate` to function properly.
+    /// `domain_id` columns necessary for `disintegrate` to function properly.
     /// If you need to initialize the database, use `PgEventStore::new` instead.
     ///
     /// If you plan to use this constructor, ensure that the `disintegrate` is
     /// properly initialized. Refer to the SQL files in the "event_store/sql" directory
-    /// to recreate the default structure. Additionally, all `domain_identifier` columns
+    /// to recreate the default structure. Additionally, all `domain_id` columns
     /// and their corresponding indexes must be created manually.
     ///
     /// # Arguments
