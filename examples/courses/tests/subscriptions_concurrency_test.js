@@ -2,15 +2,16 @@ import grpc from 'k6/net/grpc';
 import { check, sleep } from 'k6';
 
 const serverUrl = 'localhost:10437';
-const COURSES = 10;
 const USERS = 500;
+const COURSES = 10;
+const STUDENTS = 500;
 
 const COURSE_ID_PREFIX = 'course';
 const STUDENT_ID_PREFIX = 'student';
 
 export let options = {
     vus: USERS,
-    duration: '100s',
+    duration: '60s',
 };
 
 const client = new grpc.Client();
@@ -29,7 +30,7 @@ export function setup() {
         check(res, { 'course created': (r) => r && r.status === grpc.StatusOK });
     }
     // Register students
-    for (let i = 1; i <= USERS; i++) {
+    for (let i = 1; i <= STUDENTS; i++) {
         const student = {
             student_id: `${STUDENT_ID_PREFIX}${i}`,
             name: `Student ${i}`,
@@ -44,7 +45,7 @@ export function setup() {
 export default function(data) {
     client.connect(serverUrl, { plaintext: true });
     const course_id = Math.floor(Math.random() * COURSES) + 1;
-    const student_id = Math.floor(Math.random() * USERS) + 1;
+    const student_id = Math.floor(Math.random() * STUDENTS) + 1;
     const subscription = {
         course_id: `${COURSE_ID_PREFIX}${course_id}`,
         student_id: `${STUDENT_ID_PREFIX}${student_id}`,

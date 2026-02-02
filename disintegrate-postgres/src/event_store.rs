@@ -7,10 +7,10 @@ mod query;
 #[cfg(test)]
 mod tests;
 
-use append::{InsertEventSequenceBuilder, InsertEventsBuilder};
+use append::InsertEventsBuilder;
 use futures::stream::BoxStream;
 use query::CriteriaBuilder;
-use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::postgres::PgPool;
 use sqlx::Row;
 use std::error::Error as StdError;
 
@@ -33,7 +33,6 @@ where
     S: Serde<E> + Send + Sync,
 {
     pub(crate) pool: PgPool,
-    sequence_pool: PgPool,
     serde: S,
     event_type: PhantomData<E>,
 }
@@ -72,40 +71,11 @@ where
     /// * `pool` - The PostgreSQL connection pool.
     /// * `serde` - The serialization implementation for the event payload.
     pub fn new_uninitialized(pool: PgPool, serde: S) -> Self {
-        let main_connections = pool.options().get_max_connections();
-
-        // Allocate 25% of connections to sequence pool, minimum 2
-        let sequence_connections = std::cmp::max(2, (main_connections as f32 * 0.25).ceil() as u32);
-
-        let sequence_pool = PgPoolOptions::new()
-            .max_connections(sequence_connections)
-            .connect_lazy_with((*pool.connect_options()).clone());
-
         Self {
             pool,
-            sequence_pool,
             serde,
             event_type: PhantomData,
         }
-    }
-
-    /// Configures the maximum number of connections for the sequence pool.
-    ///
-    /// By default, `PgEventStore` allocates 25% of the main pool connections
-    /// to the sequence pool. This method allows adjusting that allocation.
-    ///
-    /// # Arguments
-    ///
-    /// * `connections` - The number of connections to allocate to the sequence pool.
-    ///
-    /// # Returns
-    ///
-    /// Returns a modified `PgEventStore` instance with the updated sequence pool size.
-    pub fn with_sequence_pool_connections(mut self, connections: u32) -> Self {
-        self.sequence_pool = PgPoolOptions::new()
-            .max_connections(connections.min(self.pool.options().get_max_connections()))
-            .connect_lazy_with((*self.pool.connect_options()).clone());
-        self
     }
 }
 
@@ -137,7 +107,7 @@ where
     {
         let sql = format!(
             r#"SELECT event.event_id, event.payload, epoch.__epoch_id
-            FROM (values (event_store_current_epoch())) AS epoch(__epoch_id)
+            FROM (SELECT COALESCE(MAX(event_id),0) AS __epoch_id FROM event) AS epoch
             LEFT JOIN event ON event.event_id <= epoch.__epoch_id AND ({criteria})
             ORDER BY event_id ASC"#,
             criteria = CriteriaBuilder::new(query).build()
@@ -205,20 +175,18 @@ where
 
     /// Appends new events to the event store.
     ///
-    /// This function inserts the provided `events` into the PostgreSQL event store by performing
-    /// two separate inserts. First, it inserts the events into the `event_sequence` table to reclaim
-    /// a set of IDs for the events. Then, it inserts the events into the `event` table along with
-    /// their IDs, event types, domain identifiers, and payloads. Finally, it marks the event IDs as `consumed`
-    /// in the event sequence table. If marking the event IDs as consumed fails (e.g., another process has already consumed the IDs),
-    /// a conflict error is raised. This conflict indicates that the data retrieved by the query is stale,
-    /// meaning that the events generated are no longer valid due to being generated from an old version
-    /// of the event store.
+    /// This function inserts the provided `events` into the PostgreSQL-backed event store.
+    /// Before inserting, it queries the `event` table to ensure that no events have been
+    /// appended since the given `version`. If newer events are found, a concurrency error
+    /// is returned to prevent invalid state transitions.
+    ///
+    /// If the concurrency check succeeds, the events are inserted into the `event` table.
     ///
     /// # Arguments
     ///
-    /// * `events` - A vector of events to be appended.
-    /// * `query` - The stream query specifying the criteria for filtering events.
-    /// * `version` - The ID of the last consumed event.
+    /// * `events` - The events to append to the event store.
+    /// * `query` - The stream query that identifies the target event stream.
+    /// * `version` - The ID of the last consumed event, used for optimistic concurrency control.
     ///
     /// # Returns
     ///
@@ -235,44 +203,36 @@ where
         QE: Event + Clone + Send + Sync,
     {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("SELECT event_store_begin_epoch()")
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
             .await?;
-        let mut sequence_insert = InsertEventSequenceBuilder::new(&events);
-        let event_ids: Vec<PgEventId> = sequence_insert
+
+        if sqlx::query_scalar(&format!(
+            "SELECT EXISTS (SELECT 1 FROM event WHERE {})",
+            CriteriaBuilder::new(&query.change_origin(version)).build()
+        ))
+        .fetch_one(&mut *tx)
+        .await?
+        {
+            return Err(Error::Concurrency);
+        }
+
+        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = insert
             .build()
-            .fetch_all(&self.sequence_pool)
+            .fetch_all(&mut *tx)
             .await?
             .into_iter()
             .map(|r| r.get(0))
             .collect();
-
-        let Some(last_event_id) = event_ids.last().copied() else {
-            return Ok(vec![]);
-        };
-
-        sqlx::query(&format!(r#"UPDATE event_sequence es SET consumed = consumed + 1, committed = (es.event_id = ANY($1))
-                       FROM (SELECT event_id FROM event_sequence WHERE event_id = ANY($1)
-                       OR ((consumed = 0 OR committed = true)
-                       AND (event_id <= $2 AND ({}))) ORDER BY event_id FOR UPDATE) upd WHERE es.event_id = upd.event_id"#,
-                    CriteriaBuilder::new(&query.change_origin(version)).build()))
-            .bind(&event_ids)
-            .bind(last_event_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_concurrency_err)?;
 
         let persisted_events = event_ids
             .iter()
             .zip(events)
             .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
             .collect::<Vec<_>>();
-        InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
-            .build()
-            .execute(&mut *tx)
-            .await?;
 
-        tx.commit().await?;
+        tx.commit().await.map_err(map_concurrency_err)?;
 
         Ok(persisted_events)
     }
@@ -296,33 +256,21 @@ where
         E: Clone + 'async_trait,
     {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("SELECT event_store_begin_epoch()")
-            .execute(&mut *tx)
-            .await?;
-        let mut sequence_insert = InsertEventSequenceBuilder::new(&events).with_consumed(true);
-        let event_ids: Vec<PgEventId> = sequence_insert
+
+        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = insert
             .build()
-            .fetch_all(&self.sequence_pool)
+            .fetch_all(&mut *tx)
             .await?
             .into_iter()
             .map(|r| r.get(0))
             .collect();
-
-        sqlx::query("UPDATE event_sequence es SET committed = true WHERE event_id = ANY($1)")
-            .bind(&event_ids)
-            .execute(&mut *tx)
-            .await
-            .map_err(map_concurrency_err)?;
 
         let persisted_events = event_ids
             .iter()
             .zip(events)
             .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
             .collect::<Vec<_>>();
-        InsertEventsBuilder::new(persisted_events.as_slice(), &self.serde)
-            .build()
-            .execute(&mut *tx)
-            .await?;
 
         tx.commit().await?;
 
@@ -332,7 +280,7 @@ where
 
 fn map_concurrency_err(err: sqlx::Error) -> Error {
     if let sqlx::Error::Database(ref description) = err {
-        if description.code().as_deref() == Some("23514") {
+        if description.code().as_deref() == Some("40001") {
             return Error::Concurrency;
         }
     }

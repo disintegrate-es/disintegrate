@@ -216,6 +216,7 @@ async fn it_runs_event_listeners(pool: PgPool) {
 
     assert!(append_result.is_ok());
     let carts = Cart::carts(&pool).await.unwrap();
+    dbg!(&carts);
     assert_eq!(carts.len(), 1);
     let first_row = carts.first().unwrap();
     assert_eq!("cart_1", &first_row.cart_id);

@@ -17,14 +17,6 @@ Disintegrate automatically generates the following tables when a PostgreSQL even
   * `inserted_at`: Timestamp indicating when the event was written (in UTC time).
   * "Domain identifier" columns: Automatically created by the library when a field in the `Event` is marked as `#[id]`, used for indexing and query optimization.
 
-* **Event Sequence:** This technical table is crucial for implementing optimistic locking and managing conflicts.
-  * `event_id`: Generates globally unique identifiers for events sequentially.
-  * `event_type`: Specifies the type of the appended event.
-  * `consumed`: Boolean column used by the optimistic locking logic.
-  * `committed`: Indicates if the event has been written into the event stream.
-  * `inserted_at`: Timestamp indicating when the event was written (in UTC time).
-  * "Domain identifier" columns: Automatically created by the library when a field in the `Event` is marked as `#[id]`, used for indexing and query optimization.
-
 * **Event Listener:** Maintains records of the last event processed for each listener:
   * `id`: Identifier of the event listener.
   * `last_processed_id`: ID of the last event processed by the event listener.
@@ -40,20 +32,17 @@ Disintegrate automatically generates the following tables when a PostgreSQL even
 
 ## Append Events
 
-The append API of the event stream requires three arguments:
+The event stream **append API** requires three arguments:
 
-* List of new events to be appended.
-* Stream query to check if new events have been appended to the event store that would make stale the state used to make the decision.
-* `last_event_id` retrieved during the query.
+* A list of new events to append.
+* A stream query used to detect whether conflicting events have been appended to the event store.
+* The `last_event_id` obtained when the decision was made.
 
-The append process and optimistic lock unfold as follows:
+The append operation runs inside a PostgreSQL transaction using the **`SERIALIZABLE` isolation level**.
+Before inserting new events, the `event` table is queried using the provided `StreamQuery` and `last_event_id` to determine whether any events have been appended that would invalidate the state on which the `Decision` was based.
 
-The library adds a row to the event_sequence table for each new event, serializing all writes to reserve a spot for the new events in the stream. It then attempts to update the consumed field to "1" for all events matching the query from the last_event_id to the last inserted event_id. This operation marks all pending events of other concurrent appends as invalidated. If this update fails due to either:
-
-* Another concurrent process invalidating one or more of the new events
-* A new event being written that matches the query
-
-a concurrency error is raised, indicating that the state used by the Decision is stale. If the update succeeds, it means events invalidating this decision did not occur, and the new events can be written to the events table.
+If such events are found, the operation fails with a **concurrency error**, indicating that the `Decision` was made on stale state.
+If the transaction commits successfully, it guarantees that no conflicting events occurred and that the new events were safely appended to the event store.
 
 ## Query Events
 
@@ -102,3 +91,27 @@ The library can automatically discard a snapshot under certain conditions:
 :::warning
  There may be situations where the output stays the same even though the computation underneath has changed. For example, a field of type `i32` may still exist but its calculation method has been altered. In such cases, you'll need to manually delete the snapshot.
  :::
+
+## Using the Migrator Utility
+
+Disintegrate provides the `Migrator` utility to simplify database initialization and migration. Users can call this utility instead of manually running SQL:
+
+```rust
+use disintegrate_postgres::Migrator;
+
+let migrator = Migrator::new(event_store.clone());
+
+// Initialize the event store database if not already done
+migrator.init_event_store().await?;
+
+// Initialize event listener tables
+migrator.init_listener().await?;
+
+// Run migrations
+migrator.migrate_v2_1_0_to_v3_0_0().await?;
+migrator.migrate_v3_x_x_to_v4_0_0().await?;
+```
+
+By using the Migrator, you can upgrade your event store database without manually writing SQL.
+The `migrate_` methods (`migrate_v2_1_0_to_v3_0_0`, `migrate_v3_x_x_to_v4_0_0`, etc.) are intended to be called only once during the migration.
+Once the migration is complete and verified, these calls can be removed from your codebase.

@@ -43,49 +43,22 @@ where
 
     /// Init `PgEventStore` database
     pub async fn init_event_store(&self) -> Result<(), Error> {
-        const RESERVED_NAMES: &[&str] = &[
-            "event_id",
-            "payload",
-            "event_type",
-            "inserted_at",
-            "__epoch_id",
-        ];
+        const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
 
+        sqlx::query(include_str!("event_store/sql/seq_event_event_id.sql"))
+            .execute(&self.event_store.pool)
+            .await?;
         sqlx::query(include_str!("event_store/sql/table_event.sql"))
             .execute(&self.event_store.pool)
             .await?;
         sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
             .execute(&self.event_store.pool)
             .await?;
-        sqlx::query(include_str!("event_store/sql/table_event_sequence.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
-        sqlx::query(include_str!("event_store/sql/idx_event_sequence_type.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/idx_event_sequence_committed.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/fn_event_store_current_epoch.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/fn_event_store_begin_epoch.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-
         for domain_identifier in E::SCHEMA.domain_identifiers {
             if RESERVED_NAMES.contains(&domain_identifier.ident) {
                 panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.", domain_identifier = domain_identifier.ident);
             }
             self.add_domain_identifier_column("event", domain_identifier)
-                .await?;
-            self.add_domain_identifier_column("event_sequence", domain_identifier)
                 .await?;
         }
         Ok(())
@@ -134,6 +107,21 @@ where
             )
             .await?;
         }
+        Ok(())
+    }
+
+    /// Migrate the database from version 3.x.x to version 4.0.0
+    pub async fn migrate_v3_x_x_to_v4_0_0(&self) -> Result<(), Error> {
+        sqlx::query(
+            "SELECT setval('seq_event_event_id', COALESCE((SELECT MAX(event_id) FROM event), 0))",
+        )
+        .execute(&self.event_store.pool)
+        .await?;
+        sqlx::query(
+            "ALTER TABLE event ALTER COLUMN event_id SET DEFAULT nextval('seq_event_event_id')",
+        )
+        .execute(&self.event_store.pool)
+        .await?;
         Ok(())
     }
 
