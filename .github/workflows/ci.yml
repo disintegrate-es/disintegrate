@@ -1,8 +1,9 @@
 name: CI 
 
-on: 
-  pull_request:
-
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -16,8 +17,8 @@ jobs:
         image: postgres
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres 
-          POSTGRES_DB: event_store 
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: event_store
         ports:
           - 5432:5432
         options: >-
@@ -38,11 +39,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
       - name: Install Protoc
         uses: 4w3official/setup-protoc-action@v1
       - name: Run cargo test
@@ -52,8 +49,12 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Run cargo fmt 
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with: rustfmt
+      - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
   clippy:
@@ -62,6 +63,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with: clippy
       - name: Install Protoc
         uses: 4w3official/setup-protoc-action@v1
       - name: Run clippy
