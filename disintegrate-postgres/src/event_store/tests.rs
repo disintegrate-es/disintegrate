@@ -1,8 +1,8 @@
-use super::append::{InsertEventSequenceBuilder, InsertEventsBuilder};
+use super::append::InsertEventsBuilder;
 use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
-    domain_identifiers, ident, query, DomainIdentifierInfo, DomainIdentifierSet, Event, EventInfo,
-    EventSchema, EventStore, IdentifierType, PersistedEvent,
+    domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo, EventSchema, EventStore,
+    IdentifierType,
 };
 use disintegrate_serde::serde::json::Json;
 use disintegrate_serde::Deserializer;
@@ -37,19 +37,19 @@ impl Event for ShoppingCartEvent {
         events_info: &[
             &EventInfo {
                 name: "ShoppingCartAdded",
-                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
             },
             &EventInfo {
                 name: "ShoppingCartRemoved",
-                domain_identifiers: &[&ident!(#product_id), &ident!(#cart_id)],
+                domain_ids: &[&ident!(#product_id), &ident!(#cart_id)],
             },
         ],
-        domain_identifiers: &[
-            &DomainIdentifierInfo {
+        domain_ids: &[
+            &DomainIdInfo {
                 ident: ident!(#cart_id),
                 type_info: IdentifierType::String,
             },
-            &DomainIdentifierInfo {
+            &DomainIdInfo {
                 ident: ident!(#product_id),
                 type_info: IdentifierType::String,
             },
@@ -61,18 +61,18 @@ impl Event for ShoppingCartEvent {
             ShoppingCartEvent::Removed { .. } => "ShoppingCartRemoved",
         }
     }
-    fn domain_identifiers(&self) -> DomainIdentifierSet {
+    fn domain_ids(&self) -> DomainIdSet {
         match self {
             ShoppingCartEvent::Added {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+            } => domain_ids! {product_id: product_id, cart_id: cart_id},
             ShoppingCartEvent::Removed {
                 product_id,
                 cart_id,
                 ..
-            } => domain_identifiers! {product_id: product_id, cart_id: cart_id},
+            } => domain_ids! {product_id: product_id, cart_id: cart_id},
         }
     }
 }
@@ -270,24 +270,8 @@ pub async fn insert_events<E: Event + Clone + Serialize + DeserializeOwned>(
     pool: &PgPool,
     events: &[E],
 ) {
-    let mut event_sequence_insert = InsertEventSequenceBuilder::new(events)
-        .with_consumed(true)
-        .with_committed(true);
-    let event_ids: Vec<PgEventId> = event_sequence_insert
-        .build()
-        .fetch_all(pool)
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|r| r.get(0))
-        .collect();
-    let persisted_events = event_ids
-        .into_iter()
-        .zip(events.iter())
-        .map(|(id, event)| PersistedEvent::new(id, event.clone()))
-        .collect::<Vec<_>>();
     let serde = disintegrate_serde::serde::json::Json::default();
-    InsertEventsBuilder::new(persisted_events.as_slice(), &serde)
+    InsertEventsBuilder::new(events, &serde)
         .build()
         .execute(pool)
         .await

@@ -539,7 +539,6 @@ where
         };
 
         let result = self.handle_events_from(last_processed_id, &mut tx).await;
-
         self.release_listener(result, tx).await
     }
 

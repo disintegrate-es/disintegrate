@@ -74,6 +74,7 @@ async fn event_listener(pool: sqlx::PgPool, event_store: EventStore) -> Result<(
             read_model::ReadModelProjection::try_new(pool).await?,
             PgEventListenerConfig::poller(Duration::from_secs(5))
                 .with_notifier()
+                .fetch_size(100)
                 .with_retry(handle_read_model_retry),
         )
         .start_with_shutdown(shutdown())

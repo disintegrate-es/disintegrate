@@ -14,7 +14,7 @@
 use core::fmt::Debug;
 use std::marker::PhantomData;
 
-use crate::{domain_identifiers, event::EventId, DomainIdentifierSet, Event, PersistedEvent};
+use crate::{domain_ids, event::EventId, DomainIdSet, Event, PersistedEvent};
 
 /// Represents a query for filtering event streams.
 ///
@@ -134,7 +134,7 @@ impl<ID: EventId, E: Event + Clone> StreamQuery<ID, E> {
             if filter
                 .identifiers
                 .iter()
-                .any(|(ident, value)| event.domain_identifiers().get(ident) != Some(value))
+                .any(|(ident, value)| event.domain_ids().get(ident) != Some(value))
             {
                 return false;
             }
@@ -180,7 +180,7 @@ where
         }
     } else {
         StreamQuery {
-            filters: vec![StreamFilter::new(domain_identifiers!())],
+            filters: vec![StreamFilter::new(domain_ids!())],
             event_type: PhantomData,
             event_id_type: PhantomData,
         }
@@ -233,15 +233,15 @@ macro_rules! filter {
             {
                 use $crate::Event;
                 // Check if the domain identifiers exist
-                const DOMAIN_IDENTIFIERS: &[&$crate::DomainIdentifierInfo] = <$event_ty>::SCHEMA.domain_identifiers;
-                const DOMAIN_IDENTIFIERS_INDENTS: &[&str] = &$crate::const_slice_iter!(DOMAIN_IDENTIFIERS, const fn map(item: &$crate::DomainIdentifierInfo) -> &str {
+                const DOMAIN_IDS: &[&$crate::DomainIdInfo] = <$event_ty>::SCHEMA.domain_ids;
+                const DOMAIN_IDS_INDENTS: &[&str] = &$crate::const_slice_iter!(DOMAIN_IDS, const fn map(item: &$crate::DomainIdInfo) -> &str {
                     item.ident.into_inner()
                 });
 
                 $(
                    const _:&[&str] = {
                        const FILTER_ARG: &[&str] = &[stringify!($ident)];
-                       if !$crate::utils::include(DOMAIN_IDENTIFIERS_INDENTS, FILTER_ARG) {
+                       if !$crate::utils::include(DOMAIN_IDS_INDENTS, FILTER_ARG) {
                            panic!(concat!("Invalid domain filter: the domain identifier ", stringify!($ident), " does not exist"));
                        }
                        FILTER_ARG
@@ -249,7 +249,7 @@ macro_rules! filter {
 
                 )*
             }
-            $crate::StreamFilter::<_, $event_ty>::new($crate::domain_identifiers!($($ident: $value.clone()),*))
+            $crate::StreamFilter::<_, $event_ty>::new($crate::domain_ids!($($ident: $value.clone()),*))
         }
     };
 }
@@ -280,7 +280,7 @@ pub struct StreamFilter<ID: EventId, E: Event + Clone> {
     /// The names of the events to include in the query results.
     events: &'static [&'static str],
     /// The domain identifiers and values used to filter the events.
-    identifiers: DomainIdentifierSet,
+    identifiers: DomainIdSet,
     /// The starting point of the query within the event stream.
     origin: ID,
     /// The names of the events to exclude from the query results.
@@ -291,7 +291,7 @@ pub struct StreamFilter<ID: EventId, E: Event + Clone> {
 
 impl<ID: EventId, E: Event + Clone> StreamFilter<ID, E> {
     /// Creates a new stream filter with the specified domain identifiers.
-    pub fn new(identifiers: DomainIdentifierSet) -> Self {
+    pub fn new(identifiers: DomainIdSet) -> Self {
         Self {
             events: E::SCHEMA.events,
             identifiers,
@@ -335,7 +335,7 @@ impl<ID: EventId, E: Event + Clone> StreamFilter<ID, E> {
     }
 
     /// Returns the domain identifiers used to filter the events.
-    pub fn identifiers(&self) -> &DomainIdentifierSet {
+    pub fn identifiers(&self) -> &DomainIdSet {
         &self.identifiers
     }
 
