@@ -1,7 +1,7 @@
 name: CI 
 
 on:
-  push:
+  pull_request:
     paths-ignore:
       - 'docs/**'
 env:
@@ -53,7 +53,8 @@ jobs:
         uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
-        with: rustfmt
+        with:
+          components: rustfmt
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
@@ -65,7 +66,8 @@ jobs:
         uses: actions/checkout@v3
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
-        with: clippy
+        with: 
+          components: clippy
       - name: Install Protoc
         uses: 4w3official/setup-protoc-action@v1
       - name: Run clippy
