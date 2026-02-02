@@ -6,7 +6,7 @@
 //!
 //! The migrator is typically executed during application startup or via
 //! dedicated administrative tooling.
-use disintegrate::{DomainIdentifierInfo, Event};
+use disintegrate::{DomainIdInfo, Event};
 use disintegrate_serde::Serde;
 
 use crate::PgEventStore;
@@ -43,50 +43,25 @@ where
 
     /// Init `PgEventStore` database
     pub async fn init_event_store(&self) -> Result<(), Error> {
-        const RESERVED_NAMES: &[&str] = &[
-            "event_id",
-            "payload",
-            "event_type",
-            "inserted_at",
-            "__epoch_id",
-        ];
+        const RESERVED_NAMES: &[&str] = &["event_id", "payload", "event_type", "inserted_at"];
 
+        sqlx::query(include_str!("event_store/sql/seq_event_event_id.sql"))
+            .execute(&self.event_store.pool)
+            .await?;
         sqlx::query(include_str!("event_store/sql/table_event.sql"))
             .execute(&self.event_store.pool)
             .await?;
         sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
             .execute(&self.event_store.pool)
             .await?;
-        sqlx::query(include_str!("event_store/sql/table_event_sequence.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
-        sqlx::query(include_str!("event_store/sql/idx_event_sequence_type.sql"))
-            .execute(&self.event_store.pool)
-            .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/idx_event_sequence_committed.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/fn_event_store_current_epoch.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-        sqlx::query(include_str!(
-            "event_store/sql/fn_event_store_begin_epoch.sql"
-        ))
-        .execute(&self.event_store.pool)
-        .await?;
-
-        for domain_identifier in E::SCHEMA.domain_identifiers {
-            if RESERVED_NAMES.contains(&domain_identifier.ident) {
-                panic!("Domain identifier name {domain_identifier} is reserved. Please use a different name.", domain_identifier = domain_identifier.ident);
+        for domain_id in E::SCHEMA.domain_ids {
+            if RESERVED_NAMES.contains(&domain_id.ident) {
+                panic!(
+                    "Domain id name {domain_id} is reserved. Please use a different name.",
+                    domain_id = domain_id.ident
+                );
             }
-            self.add_domain_identifier_column("event", domain_identifier)
-                .await?;
-            self.add_domain_identifier_column("event_sequence", domain_identifier)
-                .await?;
+            self.add_domain_id_column("event", domain_id).await?;
         }
         Ok(())
     }
@@ -118,8 +93,8 @@ where
         self.migrate_hash_index_to_btree("idx_events_type", "event", "event_type")
             .await?;
 
-        for domain_identifier in E::SCHEMA.domain_identifiers {
-            let column_name = domain_identifier.ident;
+        for domain_id in E::SCHEMA.domain_ids {
+            let column_name = domain_id.ident;
 
             self.migrate_hash_index_to_btree(
                 &format!("idx_event_{column_name}"),
@@ -137,13 +112,28 @@ where
         Ok(())
     }
 
-    async fn add_domain_identifier_column(
+    /// Migrate the database from version 3.x.x to version 4.0.0
+    pub async fn migrate_v3_x_x_to_v4_0_0(&self) -> Result<(), Error> {
+        sqlx::query(
+            "SELECT setval('seq_event_event_id', COALESCE((SELECT MAX(event_id) FROM event), 0))",
+        )
+        .execute(&self.event_store.pool)
+        .await?;
+        sqlx::query(
+            "ALTER TABLE event ALTER COLUMN event_id SET DEFAULT nextval('seq_event_event_id')",
+        )
+        .execute(&self.event_store.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn add_domain_id_column(
         &self,
         table: &str,
-        domain_identifier: &DomainIdentifierInfo,
+        domain_id: &DomainIdInfo,
     ) -> Result<(), Error> {
-        let column_name = domain_identifier.ident;
-        let sql_type = match domain_identifier.type_info {
+        let column_name = domain_id.ident;
+        let sql_type = match domain_id.type_info {
             disintegrate::IdentifierType::String => "TEXT",
             disintegrate::IdentifierType::i64 => "BIGINT",
             disintegrate::IdentifierType::Uuid => "UUID",
