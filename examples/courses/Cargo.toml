@@ -20,7 +20,7 @@ tonic-prost = "0.14.2"
 tonic-health = "0.14.2"
 tonic-reflection = "0.14.2"
 tower = "0.5.3"
-prost = { version = "0.14.1" }
+prost = { version = "0.14.3" }
 dotenv = "0.15.0"
 serde = "1.0.228"
 tracing = "0.1.44"
