@@ -22,7 +22,7 @@ sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "uui
 async-trait = "0.1.89"
 futures = "0.3.31"
 async-stream = "0.3.6"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 tokio = {version = "1.48.0", features = ["macros"]}
 tokio-util = {version = "0.7.18", optional = true}
 uuid = { version = "1.19.0", features = ["v3"] }
