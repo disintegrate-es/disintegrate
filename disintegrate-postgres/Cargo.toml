@@ -23,7 +23,7 @@ async-trait = "0.1.89"
 futures = "0.3.31"
 async-stream = "0.3.6"
 thiserror = "2.0.17"
-tokio = {version = "1.48.0", features = ["macros"]}
+tokio = {version = "1.49.0", features = ["macros"]}
 tokio-util = {version = "0.7.18", optional = true}
 uuid = { version = "1.19.0", features = ["v3"] }
 md-5 = "0.10.6"
