@@ -11,7 +11,7 @@ repository.workspace = true
 disintegrate = { version = "4.0.0", path = "../../disintegrate", features = ["macros", "serde-json"] }
 disintegrate-postgres = { version = "4.0.0", path = "../../disintegrate-postgres" }
 sqlx = { version = "0.8.6", features = [ "runtime-tokio-rustls" , "postgres" ] }
-tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "signal"] }
 anyhow = "1.0.100"
 dotenv = "0.15.0"
 serde = { version = "1.0.228", features = ["derive"] }
