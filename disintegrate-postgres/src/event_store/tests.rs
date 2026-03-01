@@ -1,5 +1,5 @@
 use super::append::InsertEventsBuilder;
-use crate::{event_store, Error, PgEventId, PgEventStore};
+use crate::{Error, PgEventId, PgEventStore};
 use disintegrate::{
     domain_ids, ident, query, DomainIdInfo, DomainIdSet, Event, EventInfo, EventSchema, EventStore,
     IdentifierType,
@@ -385,7 +385,7 @@ async fn stream_does_not_skip_events_when_writers_commit_out_of_order(pool: PgPo
     let second_stream_new_events: Vec<i64> = second_stream_events
         .iter()
         .filter(|id| !first_stream_events.contains(id))
-        .map(|id| *id)
+        .copied()
         .collect();
 
     assert!(first_stream_events
