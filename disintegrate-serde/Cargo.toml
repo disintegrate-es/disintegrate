@@ -18,7 +18,7 @@ messagepack = ["dep:rmp-serde"]
 full = ["json", "protobuf", "avro", "prost"]
 
 [dependencies]
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 serde_json = { version = "1.0.149", optional = true }
 serde = { version = "1.0.228", features = ["derive"] }
 protobuf = { version = "3.7.2", optional = true }
