@@ -54,6 +54,16 @@ where
         sqlx::query(include_str!("event_store/sql/idx_event_type.sql"))
             .execute(&self.event_store.pool)
             .await?;
+        sqlx::query(include_str!(
+            "event_store/sql/fn_event_store_current_epoch.sql"
+        ))
+        .execute(&self.event_store.pool)
+        .await?;
+        sqlx::query(include_str!(
+            "event_store/sql/fn_event_store_begin_epoch.sql"
+        ))
+        .execute(&self.event_store.pool)
+        .await?;
         for domain_id in E::SCHEMA.domain_ids {
             if RESERVED_NAMES.contains(&domain_id.ident) {
                 panic!(

@@ -266,6 +266,266 @@ async fn it_returns_a_concurrency_error_when_it_appends_events_of_a_query_which_
     assert!(matches!(result, Err(Error::Concurrency)));
 }
 
+/// Tests that a reader does not skip events when two writers commit out of sequence order.
+///
+/// Scenario:
+/// 1. Insert an initial event (event_id = 1)
+/// 2. Writer A starts a transaction and appends an event (gets event_id = 2), but does not commit
+/// 3. Writer B starts a transaction, appends an event (gets event_id = 3), and commits
+/// 4. A reader streams events — event 3 is committed but event 2 is not yet visible
+/// 5. Writer A commits
+/// 6. A second reader streams all events
+/// 7. We verify that all events from the first read appear in the second read,
+///    and any new events in the second read have IDs greater than the max from the first read
+#[sqlx::test]
+async fn stream_does_not_skip_events_when_writers_commit_out_of_order(pool: PgPool) {
+    use disintegrate::StreamItem;
+    use std::sync::Arc;
+
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+
+    // Insert an initial event so we have a baseline
+    let init_query = query!(ShoppingCartEvent; cart_id == "cart_1");
+    event_store
+        .append(vec![added_event("product_0", "cart_1")], init_query, 0)
+        .await
+        .unwrap();
+
+    let writer_a_inserted = Arc::new(tokio::sync::Notify::new());
+    let reader_done = Arc::new(tokio::sync::Notify::new());
+
+    // Writer A: append in tx but delay commit until reader is done
+    let writer_a = tokio::spawn({
+        let event_store = event_store.clone();
+        let pool = pool.clone();
+        let writer_a_inserted = writer_a_inserted.clone();
+        let reader_done = reader_done.clone();
+        async move {
+            let mut tx = pool.begin().await.unwrap();
+            let query_a = query!(ShoppingCartEvent; cart_id == "cart_a");
+            event_store
+                .append_in_tx(
+                    &mut tx,
+                    vec![added_event("product_a", "cart_a")],
+                    query_a,
+                    0,
+                )
+                .await
+                .unwrap();
+
+            // Signal: Writer A has appended (but not committed)
+            writer_a_inserted.notify_one();
+
+            // Wait until the reader has finished reading
+            reader_done.notified().await;
+
+            // Now commit
+            tx.commit().await.unwrap();
+        }
+    });
+
+    // Writer B: wait for Writer A to insert, then append and commit immediately
+    let writer_b = tokio::spawn({
+        let event_store = event_store.clone();
+        let writer_a_inserted = writer_a_inserted.clone();
+        async move {
+            // Wait for Writer A to insert (but not commit)
+            writer_a_inserted.notified().await;
+
+            let query_b = query!(ShoppingCartEvent; cart_id == "cart_b");
+            event_store
+                .append(vec![added_event("product_b", "cart_b")], query_b, 0)
+                .await
+                .unwrap();
+        }
+    });
+
+    // Wait for Writer B to commit (Writer A is still uncommitted)
+    writer_b.await.unwrap();
+
+    // Reader: stream events now. Writer B's event is committed, Writer A's is not.
+    let read_query = query!(ShoppingCartEvent);
+    let first_stream_events: Vec<_> = event_store
+        .stream(&read_query)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .filter_map(|item| match item {
+            Ok(StreamItem::Event(e)) => Some(Ok(e.id())),
+            Err(err) => Some(Err(err)),
+            _ => None,
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let max_event_id_first_stream = first_stream_events.iter().max().unwrap();
+
+    // Signal Writer A to commit
+    reader_done.notify_one();
+    writer_a.await.unwrap();
+
+    // Second read: full read to see all events
+    let second_stream_events: Vec<_> = event_store
+        .stream(&read_query)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .filter_map(|item| match item {
+            Ok(StreamItem::Event(e)) => Some(Ok(e.id())),
+            Err(err) => Some(Err(err)),
+            _ => None,
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    let second_stream_new_events: Vec<i64> = second_stream_events
+        .iter()
+        .filter(|id| !first_stream_events.contains(id))
+        .copied()
+        .collect();
+
+    assert!(first_stream_events
+        .iter()
+        .all(|e| second_stream_events.contains(e)));
+    assert!(second_stream_new_events
+        .iter()
+        .all(|id| id > max_event_id_first_stream));
+}
+
+/// Tests that `event_store_current_epoch()` never exceeds the max committed event_id.
+///
+/// Scenario:
+/// 1. Insert one event (event_id = 1) — the only committed event
+/// 2. Writer A starts a transaction and appends (gets event_id = 2), does NOT commit
+/// 3. Writer B starts a transaction and appends (gets event_id = 3), does NOT commit
+/// 4. Writer A rolls back — its advisory lock is released
+/// 5. A reader streams events
+/// 6. We assert epoch (the End item) <= 1 (the known max committed event_id).
+#[sqlx::test]
+async fn epoch_does_not_exceed_max_committed_event_id(pool: PgPool) {
+    use disintegrate::StreamItem;
+    use std::sync::Arc;
+
+    let event_store = PgEventStore::<ShoppingCartEvent, Json<ShoppingCartEvent>>::try_new(
+        pool.clone(),
+        Json::default(),
+    )
+    .await
+    .unwrap();
+
+    // Insert one committed event (event_id = 1)
+    let init_query = query!(ShoppingCartEvent; cart_id == "cart_1");
+    event_store
+        .append(vec![added_event("product_0", "cart_1")], init_query, 0)
+        .await
+        .unwrap();
+
+    const MAX_COMMITTED: PgEventId = 1;
+
+    let writer_a_inserted = Arc::new(tokio::sync::Notify::new());
+    let writer_b_inserted = Arc::new(tokio::sync::Notify::new());
+    let writer_a_rolled_back = Arc::new(tokio::sync::Notify::new());
+    let reader_done = Arc::new(tokio::sync::Notify::new());
+
+    // Writer A: append in tx, then rollback after Writer B inserts
+    let writer_a = tokio::spawn({
+        let event_store = event_store.clone();
+        let pool = pool.clone();
+        let writer_a_inserted = writer_a_inserted.clone();
+        let writer_b_inserted = writer_b_inserted.clone();
+        let writer_a_rolled_back = writer_a_rolled_back.clone();
+        async move {
+            let mut tx = pool.begin().await.unwrap();
+            let query_a = query!(ShoppingCartEvent; cart_id == "cart_a");
+            event_store
+                .append_in_tx(
+                    &mut tx,
+                    vec![added_event("product_a", "cart_a")],
+                    query_a,
+                    0,
+                )
+                .await
+                .unwrap();
+
+            // Signal: Writer A has appended (but not committed)
+            writer_a_inserted.notify_one();
+
+            // Wait for Writer B to insert
+            writer_b_inserted.notified().await;
+
+            // Rollback — releases Writer A's advisory lock
+            tx.rollback().await.unwrap();
+            writer_a_rolled_back.notify_one();
+        }
+    });
+
+    // Writer B: wait for Writer A, then append in tx and hold open
+    let writer_b = tokio::spawn({
+        let event_store = event_store.clone();
+        let pool = pool.clone();
+        let writer_a_inserted = writer_a_inserted.clone();
+        let writer_b_inserted = writer_b_inserted.clone();
+        let reader_done = reader_done.clone();
+        async move {
+            writer_a_inserted.notified().await;
+
+            let mut tx = pool.begin().await.unwrap();
+            let query_b = query!(ShoppingCartEvent; cart_id == "cart_b");
+            event_store
+                .append_in_tx(
+                    &mut tx,
+                    vec![added_event("product_b", "cart_b")],
+                    query_b,
+                    0,
+                )
+                .await
+                .unwrap();
+
+            // Signal: Writer B has appended
+            writer_b_inserted.notify_one();
+
+            // Hold transaction open until reader is done
+            reader_done.notified().await;
+            tx.rollback().await.unwrap();
+        }
+    });
+
+    // Wait for Writer A to rollback
+    writer_a_rolled_back.notified().await;
+    writer_a.await.unwrap();
+
+    // Reader: stream events. Writer A rolled back, Writer B still in-flight.
+    let read_query = query!(ShoppingCartEvent);
+    let stream_results: Vec<_> = event_store
+        .stream(&read_query)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+
+    let epoch = stream_results
+        .iter()
+        .find_map(|item| match item {
+            StreamItem::End(id) => Some(*id),
+            _ => None,
+        })
+        .expect("stream should yield an End item");
+
+    assert!(
+        epoch <= MAX_COMMITTED,
+        "epoch {epoch} exceeds max committed event_id {MAX_COMMITTED}"
+    );
+
+    // Cleanup
+    reader_done.notify_one();
+    writer_b.await.unwrap();
+}
+
 pub async fn insert_events<E: Event + Clone + Serialize + DeserializeOwned>(
     pool: &PgPool,
     events: &[E],
