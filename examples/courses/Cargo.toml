@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 disintegrate = { version = "4.0.0", path = "../../disintegrate", features = ["macros", "serde-prost"] }
 disintegrate-postgres = { version = "4.0.0", path = "../../disintegrate-postgres", features = ["listener"] }
-anyhow = "1.0.100"
+anyhow = "1.0.101"
 async-trait = "0.1.89"
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres"] }
 thiserror = "2.0.17"
