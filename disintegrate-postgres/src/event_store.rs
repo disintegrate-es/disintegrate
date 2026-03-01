@@ -84,7 +84,68 @@ where
     S: Serde<E> + Send + Sync,
     E: Event + Send + Sync,
 {
+    /// Appends events within an existing transaction without committing.
+    ///
+    /// This allows callers to control when the transaction is committed.
+    /// Sets SERIALIZABLE isolation, calls `event_store_begin_epoch()` to
+    /// signal an in-flight write, performs the concurrency check, and inserts events.
+    pub(crate) async fn append_in_tx<QE>(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        events: Vec<E>,
+        query: StreamQuery<PgEventId, QE>,
+        version: PgEventId,
+    ) -> Result<Vec<PersistedEvent<PgEventId, E>>, Error>
+    where
+        E: Clone,
+        QE: Event + Clone + Send + Sync,
+    {
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+            .execute(&mut **tx)
+            .await?;
+
+        sqlx::query("SELECT event_store_begin_epoch()")
+            .execute(&mut **tx)
+            .await?;
+
+        if sqlx::query_scalar(&format!(
+            "SELECT EXISTS (SELECT 1 FROM event WHERE {})",
+            CriteriaBuilder::new(&query.change_origin(version)).build()
+        ))
+        .fetch_one(&mut **tx)
+        .await?
+        {
+            return Err(Error::Concurrency);
+        }
+
+        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
+        let event_ids: Vec<PgEventId> = insert
+            .build()
+            .fetch_all(&mut **tx)
+            .await?
+            .into_iter()
+            .map(|r| r.get(0))
+            .collect();
+
+        let persisted_events = event_ids
+            .iter()
+            .zip(events)
+            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
+            .collect::<Vec<_>>();
+
+        Ok(persisted_events)
+    }
+
     /// Streams events based on the provided query and executor.
+    ///
+    /// Events are returned up to the current epoch, which is the minimum between
+    /// the lowest in-flight writer's sequence position and the highest committed
+    /// event ID. This guarantees that readers never observe uncommitted events
+    /// and never skip events when concurrent writers commit out of sequence order.
+    ///
+    /// The stream yields `StreamItem::Event` for each matching event and ends
+    /// with `StreamItem::End(epoch_id)` indicating the epoch up to which events
+    /// were read.
     ///
     /// # Arguments
     ///
@@ -93,8 +154,8 @@ where
     ///
     /// # Returns
     ///
-    /// A `Result` containing a boxed stream of `PersistedEvent` that matches the query criteria,
-    /// or an error of type `Error`.
+    /// A boxed stream of `StreamItem` that contains matching events up to the
+    /// current epoch, or an error of type `Error`.
     pub(crate) fn stream_with<'a, QE, EX>(
         &'a self,
         executor: EX,
@@ -107,7 +168,7 @@ where
     {
         let sql = format!(
             r#"SELECT event.event_id, event.payload, epoch.__epoch_id
-            FROM (SELECT COALESCE(MAX(event_id),0) AS __epoch_id FROM event) AS epoch
+            FROM (values (event_store_current_epoch())) AS epoch(__epoch_id)
             LEFT JOIN event ON event.event_id <= epoch.__epoch_id AND ({criteria})
             ORDER BY event_id ASC"#,
             criteria = CriteriaBuilder::new(query).build()
@@ -203,34 +264,8 @@ where
         QE: Event + Clone + Send + Sync,
     {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-            .execute(&mut *tx)
-            .await?;
 
-        if sqlx::query_scalar(&format!(
-            "SELECT EXISTS (SELECT 1 FROM event WHERE {})",
-            CriteriaBuilder::new(&query.change_origin(version)).build()
-        ))
-        .fetch_one(&mut *tx)
-        .await?
-        {
-            return Err(Error::Concurrency);
-        }
-
-        let mut insert = InsertEventsBuilder::new(&events, &self.serde);
-        let event_ids: Vec<PgEventId> = insert
-            .build()
-            .fetch_all(&mut *tx)
-            .await?
-            .into_iter()
-            .map(|r| r.get(0))
-            .collect();
-
-        let persisted_events = event_ids
-            .iter()
-            .zip(events)
-            .map(|(event_id, event)| PersistedEvent::new(*event_id, event))
-            .collect::<Vec<_>>();
+        let persisted_events = self.append_in_tx(&mut tx, events, query, version).await?;
 
         tx.commit().await.map_err(map_concurrency_err)?;
 
@@ -256,6 +291,10 @@ where
         E: Clone + 'async_trait,
     {
         let mut tx = self.pool.begin().await?;
+
+        sqlx::query("SELECT event_store_begin_epoch()")
+            .execute(&mut *tx)
+            .await?;
 
         let mut insert = InsertEventsBuilder::new(&events, &self.serde);
         let event_ids: Vec<PgEventId> = insert
