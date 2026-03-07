@@ -13,7 +13,7 @@ disintegrate-postgres = { version = "4.0.1", path = "../../disintegrate-postgres
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "signal"] }
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 dotenv = "0.15.0"
 sqlx = { version = "0.8.6", features = [ "runtime-tokio-rustls" , "postgres" ] }
 actix-web = "4.11.0"
