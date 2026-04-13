@@ -27,11 +27,11 @@ regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
 paste = "1.0.15"
-uuid = { version = "1.19.0", features = ["serde"] }
+uuid = { version = "1.22.0", features = ["serde"] }
 
 [dev-dependencies]
 assert2 = "0.3.16"
-uuid = { version = "1.19.0", features = ["v4"] }
+uuid = { version = "1.22.0", features = ["v4"] }
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 mockall = "0.14.0"
 

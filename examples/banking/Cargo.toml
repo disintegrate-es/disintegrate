@@ -16,4 +16,4 @@ thiserror = "2.0.18"
 anyhow = "1.0.102"
 dotenv = "0.15.0"
 sqlx = { version = "0.8.6", features = [ "runtime-tokio-rustls" , "postgres" ] }
-actix-web = "4.11.0"
+actix-web = "4.13.0"
