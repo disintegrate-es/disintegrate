@@ -1,39 +1,26 @@
 use crate::PgEventId;
 use disintegrate::Event;
 use disintegrate::StreamQuery;
-use std::fmt::Write;
+use sqlx::{Postgres, QueryBuilder};
 
-/// SQL Query Builder
+/// Extension trait for `sqlx::QueryBuilder` that appends a [`StreamQuery`]
+/// as a SQL criteria expression.
 ///
-/// A builder for constructing SQL query based on the stream query.
-pub struct CriteriaBuilder<'a, QE>
-where
-    QE: Event + Clone,
-{
-    query: &'a StreamQuery<PgEventId, QE>,
-    builder: String,
+/// All values (origin, event type, identifier values) are bound as parameters.
+/// Identifier column names come from a validated schema and are interpolated
+/// directly as SQL identifiers.
+pub trait QueryBuilderExt<'a> {
+    fn push_stream_query<QE>(&mut self, query: &StreamQuery<PgEventId, QE>) -> &mut Self
+    where
+        QE: Event + Clone;
 }
 
-impl<'a, QE> CriteriaBuilder<'a, QE>
-where
-    QE: Event + Clone,
-{
-    /// Creates a new instance of `QueryBuilder`.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The stream query specifying the filtering and ordering options.
-    /// * `init` - The initial SQL fragment.
-    pub fn new(query: &'a StreamQuery<PgEventId, QE>) -> Self {
-        Self {
-            query,
-            builder: String::with_capacity(512),
-        }
-    }
-
-    /// Builds the SQL criteria string.
-    pub fn build(mut self) -> String {
-        let mut filters = self.query.filters().iter().peekable();
+impl<'a> QueryBuilderExt<'a> for QueryBuilder<'a, Postgres> {
+    fn push_stream_query<QE>(&mut self, query: &StreamQuery<PgEventId, QE>) -> &mut Self
+    where
+        QE: Event + Clone,
+    {
+        let mut filters = query.filters().iter().peekable();
         while let Some(filter) = filters.next() {
             let events: Vec<&str> = if let Some(excluded_events) = filter.excluded_events() {
                 filter
@@ -47,24 +34,22 @@ where
             };
             let has_events = !events.is_empty();
 
-            // Start filter group
-            self.builder.push('(');
+            self.push("(");
 
-            // Add event_id condition if needed
             if filter.origin() > 0 {
-                write!(self.builder, "event_id > {}", filter.origin()).unwrap();
+                self.push("event_id > ");
+                self.push_bind(filter.origin());
 
                 if has_events {
-                    write!(self.builder, " AND (").unwrap();
+                    self.push(" AND (");
                 }
             }
 
-            // Process events
-            let mut events = events.into_iter().peekable();
-            while let Some(event) = events.next() {
-                write!(self.builder, "(event_type = '{}'", event).unwrap();
+            let mut events_iter = events.iter().peekable();
+            while let Some(event) = events_iter.next() {
+                self.push("(event_type = ");
+                self.push_bind(event.to_string());
 
-                // Process identifiers
                 let event_info = QE::SCHEMA.event_info(event).unwrap();
                 let mut event_identifiers = filter
                     .identifiers()
@@ -73,46 +58,44 @@ where
                     .peekable();
 
                 if event_identifiers.peek().is_some() {
-                    write!(self.builder, " AND ").unwrap();
+                    self.push(" AND ");
                 }
 
                 while let Some((ident, value)) = event_identifiers.next() {
-                    write!(self.builder, "{} = ", ident).unwrap();
+                    self.push(ident);
+                    self.push(" = ");
                     match value {
-                        disintegrate::IdentifierValue::String(value) => {
-                            write!(self.builder, "'{}'", value).unwrap();
+                        disintegrate::IdentifierValue::String(v) => {
+                            self.push_bind(v.clone());
                         }
-                        disintegrate::IdentifierValue::i64(value) => {
-                            write!(self.builder, "{}", value).unwrap();
+                        disintegrate::IdentifierValue::i64(v) => {
+                            self.push_bind(*v);
                         }
-                        disintegrate::IdentifierValue::Uuid(value) => {
-                            write!(self.builder, "'{}'", value).unwrap();
+                        disintegrate::IdentifierValue::Uuid(v) => {
+                            self.push_bind(*v);
                         }
                     };
                     if event_identifiers.peek().is_some() {
-                        write!(self.builder, " AND ").unwrap();
+                        self.push(" AND ");
                     }
                 }
 
-                self.builder.push(')');
-                if events.peek().is_some() {
-                    write!(self.builder, " OR ").unwrap();
+                self.push(")");
+                if events_iter.peek().is_some() {
+                    self.push(" OR ");
                 }
             }
 
-            // Close events group if needed
             if filter.origin() > 0 && has_events {
-                self.builder.push(')');
+                self.push(")");
             }
 
-            // Close filter group
-            self.builder.push(')');
+            self.push(")");
             if filters.peek().is_some() {
-                write!(self.builder, " OR ").unwrap();
+                self.push(" OR ");
             }
         }
-
-        self.builder
+        self
     }
 }
 
@@ -164,47 +147,45 @@ mod tests {
         }
     }
 
+    fn build_sql(query: &StreamQuery<PgEventId, TestEvent>) -> String {
+        let mut qb = QueryBuilder::<Postgres>::new("");
+        qb.push_stream_query(query);
+        qb.sql().to_string()
+    }
+
     #[test]
     fn it_builds_criteria() {
         let query = query!(TestEvent);
-        let criteria_builder = CriteriaBuilder::new(&query);
-
         assert_eq!(
-            criteria_builder.build(),
-            "((event_type = 'Bar') OR (event_type = 'Foo'))"
+            build_sql(&query),
+            "((event_type = $1) OR (event_type = $2))"
         );
     }
 
     #[test]
     fn it_builds_criteria_with_an_id_filter() {
         let query = query!(TestEvent; foo_id == "value");
-        let criteria_builder = CriteriaBuilder::new(&query);
-
         assert_eq!(
-            criteria_builder.build(),
-            "((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value'))"
+            build_sql(&query),
+            "((event_type = $1) OR (event_type = $2 AND foo_id = $3))"
         );
     }
 
     #[test]
     fn it_builds_criteria_with_two_ids() {
         let query = query!(TestEvent; foo_id == "value", bar_id == "value2");
-        let criteria_builder = CriteriaBuilder::new(&query);
-
         assert_eq!(
-            criteria_builder.build(),
-            "((event_type = 'Bar' AND bar_id = 'value2') OR (event_type = 'Foo' AND foo_id = 'value'))"
+            build_sql(&query),
+            "((event_type = $1 AND bar_id = $2) OR (event_type = $3 AND foo_id = $4))"
         );
     }
 
     #[test]
     fn it_builds_criteria_with_origin() {
         let query = query!(10 => TestEvent; foo_id == "value");
-        let criteria_builder = CriteriaBuilder::new(&query);
-
         assert_eq!(
-            criteria_builder.build(),
-            "(event_id > 10 AND ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value')))"
+            build_sql(&query),
+            "(event_id > $1 AND ((event_type = $2) OR (event_type = $3 AND foo_id = $4)))"
         );
     }
 
@@ -212,11 +193,9 @@ mod tests {
     fn it_builds_criteria_with_union() {
         let query: StreamQuery<PgEventId, TestEvent> =
             query!(TestEvent; bar_id == "value1").union(&query!(TestEvent; foo_id == "value2"));
-        let criteria_builder = CriteriaBuilder::new(&query);
-
         assert_eq!(
-            criteria_builder.build(),
-            "((event_type = 'Bar' AND bar_id = 'value1') OR (event_type = 'Foo')) OR ((event_type = 'Bar') OR (event_type = 'Foo' AND foo_id = 'value2'))"
+            build_sql(&query),
+            "((event_type = $1 AND bar_id = $2) OR (event_type = $3)) OR ((event_type = $4) OR (event_type = $5 AND foo_id = $6))"
         );
     }
 
@@ -224,8 +203,24 @@ mod tests {
     fn it_builds_criteria_with_excluded_events() {
         let query =
             query!(TestEvent; bar_id == "value1").exclude_events(event_types!(TestEvent, [Bar]));
-        let criteria_builder = CriteriaBuilder::new(&query);
+        assert_eq!(build_sql(&query), "((event_type = $1))");
+    }
 
-        assert_eq!(criteria_builder.build(), r#"((event_type = 'Foo'))"#);
+    #[test]
+    fn it_quotes_string_value_safely() {
+        // A value with single quotes that would have caused SQL injection in the
+        // previous string-interpolated implementation must now be bound.
+        let query = query!(TestEvent; foo_id == "abc' OR '1'='1");
+        let mut qb = QueryBuilder::<Postgres>::new("");
+        qb.push_stream_query(&query);
+        let sql = qb.sql();
+        assert!(
+            !sql.contains('\''),
+            "value must not be inlined into the SQL, got: {sql}"
+        );
+        assert_eq!(
+            sql,
+            "((event_type = $1) OR (event_type = $2 AND foo_id = $3))"
+        );
     }
 }

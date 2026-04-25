@@ -9,7 +9,7 @@ mod tests;
 
 use append::InsertEventsBuilder;
 use futures::stream::BoxStream;
-use query::CriteriaBuilder;
+use query::QueryBuilderExt;
 use sqlx::postgres::PgPool;
 use sqlx::Row;
 use std::error::Error as StdError;
@@ -108,13 +108,14 @@ where
             .execute(&mut **tx)
             .await?;
 
-        if sqlx::query_scalar(&format!(
-            "SELECT EXISTS (SELECT 1 FROM event WHERE {})",
-            CriteriaBuilder::new(&query.change_origin(version)).build()
-        ))
-        .fetch_one(&mut **tx)
-        .await?
-        {
+        let mut exists_qb =
+            sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT EXISTS (SELECT 1 FROM event WHERE ");
+        exists_qb
+            .push_stream_query(&query.change_origin(version))
+            .push(")");
+
+        let exists: bool = exists_qb.build_query_scalar().fetch_one(&mut **tx).await?;
+        if exists {
             return Err(Error::Concurrency);
         }
 
@@ -166,16 +167,15 @@ where
         QE: TryFrom<E> + Event + Clone + Send + Sync + 'static,
         <QE as TryFrom<E>>::Error: StdError + Send + Sync + 'static,
     {
-        let sql = format!(
-            r#"SELECT event.event_id, event.payload, epoch.__epoch_id
-            FROM (values (event_store_current_epoch())) AS epoch(__epoch_id)
-            LEFT JOIN event ON event.event_id <= epoch.__epoch_id AND ({criteria})
-            ORDER BY event_id ASC"#,
-            criteria = CriteriaBuilder::new(query).build()
-        );
-
         stream! {
-            let mut rows = sqlx::query(&sql).fetch(executor);
+            let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+                r#"SELECT event.event_id, event.payload, epoch.__epoch_id
+            FROM (values (event_store_current_epoch())) AS epoch(__epoch_id)
+            LEFT JOIN event ON event.event_id <= epoch.__epoch_id AND ("#,
+            );
+            qb.push_stream_query(query).push(") ORDER BY event_id ASC");
+
+            let mut rows = qb.build().fetch(executor);
             let mut epoch_id: PgEventId = 0;
             while let Some(row) = rows.next().await {
                 let row = row?;
