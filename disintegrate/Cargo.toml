@@ -32,7 +32,7 @@ uuid = { version = "1.22.0", features = ["serde"] }
 [dev-dependencies]
 assert2 = "0.3.16"
 uuid = { version = "1.22.0", features = ["v4"] }
-tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread"] }
 mockall = "0.14.0"
 
 [package.metadata.docs.rs]
